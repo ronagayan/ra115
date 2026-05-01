@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import imageToBase64 from '../../lib/imageToBase64';
 
 const EMOJIS = ['💚','❤️','✨','🌸','🥰','😊','🌙','⭐','🎉','🫂','💫','🌿'];
+const WORDLE_MIN = 3;
+const WORDLE_MAX = 7;
 
 export default function WriteNoteModal({ onClose, onSubmit, initial }) {
   const isEdit = !!initial;
   const [text, setText] = useState(initial?.text || '');
   const [emoji, setEmoji] = useState(initial?.emoji || '');
   const [imageUrl, setImageUrl] = useState(initial?.imageUrl || '');
+  const [wordleEnabled, setWordleEnabled] = useState(!!initial?.wordle);
+  const [wordleWord, setWordleWord] = useState(initial?.wordle?.word || '');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
@@ -34,11 +38,29 @@ export default function WriteNoteModal({ onClose, onSubmit, initial }) {
     setUploading(false);
   }
 
+  function wordleValid() {
+    const w = wordleWord.trim();
+    return w.length >= WORDLE_MIN && w.length <= WORDLE_MAX;
+  }
+
   async function handleSubmit() {
     if (!text.trim()) return;
+    if (wordleEnabled && !wordleValid()) return;
     setSaving(true);
     try {
-      await onSubmit({ text: text.trim(), emoji, imageUrl });
+      const payload = { text: text.trim(), emoji, imageUrl };
+      if (wordleEnabled) {
+        // Preserve existing guesses if editing
+        const prevWordle = initial?.wordle || {};
+        payload.wordle = {
+          word: wordleWord.trim(),
+          guesses: prevWordle.word === wordleWord.trim() ? (prevWordle.guesses || []) : [],
+          solved: prevWordle.word === wordleWord.trim() ? !!prevWordle.solved : false,
+        };
+      } else {
+        payload.wordle = null;
+      }
+      await onSubmit(payload);
       onClose();
     } catch (err) {
       console.error('save failed', err);
@@ -57,7 +79,7 @@ export default function WriteNoteModal({ onClose, onSubmit, initial }) {
       aria-modal="true"
     >
       <div
-        className="w-full max-w-md p-6 flex flex-col gap-4 clay rounded-t-[28px] sm:rounded-[28px]"
+        className="w-full max-w-md p-6 flex flex-col gap-4 clay rounded-t-[28px] sm:rounded-[28px] max-h-[92vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -132,9 +154,44 @@ export default function WriteNoteModal({ onClose, onSubmit, initial }) {
           />
         </div>
 
+        {/* Wordle toggle */}
+        <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: 'rgba(13,31,22,0.45)', border: '1px solid var(--accent)' }}>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={wordleEnabled}
+              onChange={(e) => setWordleEnabled(e.target.checked)}
+              className="w-4 h-4 accent-highlight"
+            />
+            <span className="text-text-primary font-body text-sm">🟩 צרף Wordle לפתק</span>
+          </label>
+
+          {wordleEnabled && (
+            <>
+              <input
+                value={wordleWord}
+                onChange={(e) => setWordleWord(e.target.value.replace(/\s+/g, ''))}
+                placeholder="מילה לניחוש (3-7 אותיות)"
+                maxLength={WORDLE_MAX}
+                dir="rtl"
+                className="w-full rounded-lg px-3 py-2 text-center font-mono text-text-primary placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-highlight"
+                style={{
+                  background: 'var(--bg)',
+                  border: '1px solid var(--accent)',
+                  fontFamily: '"Courier Prime", monospace',
+                  letterSpacing: '0.3em',
+                }}
+              />
+              <p className="text-[11px] text-muted font-body italic">
+                הצד השני יראה את הפתק עם wordle משלך — והניחושים שלהם יוצגו לך בזמן אמת.
+              </p>
+            </>
+          )}
+        </div>
+
         <button
           onClick={handleSubmit}
-          disabled={!text.trim() || saving}
+          disabled={!text.trim() || saving || (wordleEnabled && !wordleValid())}
           className="clay-primary w-full py-3.5 font-body font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? 'שומר...' : isEdit ? 'עדכן ✓' : 'שלח 💚'}

@@ -11,10 +11,10 @@ import useNotifications from '../hooks/useNotifications';
 export default function Home({ user }) {
   const {
     unpulled, history, myNotes,
-    pullRandomNote, addNote, updateNote, deleteNote,
+    pullNote, addNote, updateNote, updateIncomingNote, deleteNote,
   } = useNotes(user);
 
-  const [writeModal, setWriteModal] = useState(null); // null | { mode: 'new' | 'edit', note? }
+  const [writeModal, setWriteModal] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
 
   useNotifications(user);
@@ -34,6 +34,17 @@ export default function Home({ user }) {
       await updateNote(writeModal.note.id, payload);
     } else {
       await addNote(payload);
+    }
+  }
+
+  // Wordle updates: author updates their own outgoing note, recipient
+  // updates the INCOMING note (other person's outgoing → my incoming).
+  async function handleUpdateWordle(note, newGuesses, solved) {
+    const newWordle = { ...note.wordle, guesses: newGuesses, solved };
+    if (note._mine || note.author === user) {
+      await updateNote(note.id, { wordle: newWordle });
+    } else {
+      await updateIncomingNote(note.id, { wordle: newWordle });
     }
   }
 
@@ -92,6 +103,7 @@ export default function Home({ user }) {
             user={user}
             onEditNote={openEdit}
             onDeleteNote={(note) => deleteNote(note.id)}
+            onUpdateWordle={handleUpdateWordle}
           />
         </section>
 
@@ -106,9 +118,8 @@ export default function Home({ user }) {
 
       <JarSheet
         unpulled={unpulled}
-        onPull={pullRandomNote}
+        onPull={pullNote}
         onWrite={openWrite}
-        onHistory={() => setShowHistory(true)}
       />
 
       {writeModal && (

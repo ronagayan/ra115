@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { PHOTOS, HAS_REAL_PHOTOS } from '../../data/photos';
+import WordleAttachment from '../jar/WordleAttachment';
 
 // Pseudo-random but deterministic per-index variation.
 function jitter(seed, lo, hi) {
@@ -119,6 +120,14 @@ function NoteItem({ item, idx, onOpen, mine }) {
             שלי
           </div>
         )}
+        {item.wordle && (
+          <div
+            className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded text-[8px] tracking-[0.2em] uppercase font-semibold"
+            style={{ background: '#f4a261', color: '#3a1f08' }}
+          >
+            🟩
+          </div>
+        )}
         {item.emoji && (
           <div className="text-center text-base mb-0.5" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.15))' }}>
             {item.emoji}
@@ -157,9 +166,17 @@ export default function CorkBoard({
   user,
   onEditNote,
   onDeleteNote,
+  onUpdateWordle, // (note, newGuesses, solved) => Promise — recipient guess
 }) {
   const [open, setOpen] = useState(null);
   const scrollRef = useRef(null);
+
+  // Keep `open` in sync with the latest note data (so wordle guesses
+  // refresh live while the lightbox is open).
+  const allLiveNotes = [...(history || []), ...(myNotes || [])];
+  const liveOpen = open?.id
+    ? { ...open, ...(allLiveNotes.find((n) => n.id === open.id) || {}) }
+    : open;
 
   // Close lightbox on Esc
   useEffect(() => {
@@ -292,9 +309,9 @@ export default function CorkBoard({
       )}
 
       {/* Lightbox */}
-      {open && (
+      {liveOpen && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-6 overflow-y-auto"
           style={{ background: 'rgba(13,31,22,0.85)', backdropFilter: 'blur(12px)' }}
           onClick={() => setOpen(null)}
           role="dialog"
@@ -305,30 +322,30 @@ export default function CorkBoard({
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); setOpen(null); }}
-            className="clay-soft absolute top-6 right-6 w-11 h-11 flex items-center justify-center text-text-primary text-lg z-10"
+            className="clay-soft fixed top-6 right-6 w-11 h-11 flex items-center justify-center text-text-primary text-lg z-[70]"
             aria-label="סגור"
           >
             ✕
           </button>
 
           <div
-            className="max-w-md w-full animate-fadeInUp"
+            className="max-w-md w-full animate-fadeInUp my-12"
             style={{ transform: 'rotate(-1deg)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {open.kind === 'photo' ? (
+            {liveOpen.kind === 'photo' ? (
               <div
                 className="bg-[#fbf3da] p-3 pb-10"
                 style={{ boxShadow: '0 30px 60px -15px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.45)' }}
               >
-                {open.src ? (
-                  <img src={open.src} alt={open.caption} loading="eager" className="w-full" />
+                {liveOpen.src ? (
+                  <img src={liveOpen.src} alt={liveOpen.caption} loading="eager" className="w-full" />
                 ) : (
                   <div className="w-full flex items-center justify-center text-white/30" style={{ aspectRatio: '4/5', background: 'linear-gradient(135deg,#3a4f3e,#1f2e25)' }}>📷</div>
                 )}
-                {open.caption && (
+                {liveOpen.caption && (
                   <div className="mt-3 text-center text-[#3a2a14]" style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic' }}>
-                    {open.caption}
+                    {liveOpen.caption}
                   </div>
                 )}
               </div>
@@ -341,21 +358,33 @@ export default function CorkBoard({
                   boxShadow: '0 30px 60px -15px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.45)',
                 }}
               >
-                {open.emoji && <div className="text-4xl text-center mb-3">{open.emoji}</div>}
-                {open.imageUrl && <img src={open.imageUrl} alt="" loading="eager" className="w-full rounded-sm mb-4 max-h-72 object-cover" />}
+                {liveOpen.emoji && <div className="text-4xl text-center mb-3">{liveOpen.emoji}</div>}
+                {liveOpen.imageUrl && <img src={liveOpen.imageUrl} alt="" loading="eager" className="w-full rounded-sm mb-4 max-h-72 object-cover" />}
                 <p
                   className="text-center whitespace-pre-wrap leading-relaxed"
                   style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic', fontSize: '1.15rem' }}
                   dir="rtl"
                 >
-                  {open.text}
+                  {liveOpen.text}
                 </p>
 
-                {open._mine && (onEditNote || onDeleteNote) && (
+                {liveOpen.wordle && (
+                  <WordleAttachment
+                    wordle={liveOpen.wordle}
+                    isAuthor={liveOpen._mine}
+                    onUpdateGuesses={async (newGuesses, solved) => {
+                      if (onUpdateWordle) {
+                        await onUpdateWordle(liveOpen, newGuesses, solved);
+                      }
+                    }}
+                  />
+                )}
+
+                {liveOpen._mine && (onEditNote || onDeleteNote) && (
                   <div className="mt-6 flex gap-3 justify-center">
                     {onEditNote && (
                       <button
-                        onClick={() => handleEdit(open)}
+                        onClick={() => handleEdit(liveOpen)}
                         className="clay-soft px-4 py-2 text-sm font-body text-text-primary"
                       >
                         ✎ ערוך
@@ -363,7 +392,7 @@ export default function CorkBoard({
                     )}
                     {onDeleteNote && (
                       <button
-                        onClick={() => handleDelete(open)}
+                        onClick={() => handleDelete(liveOpen)}
                         className="clay-gold px-4 py-2 text-sm font-body font-semibold"
                       >
                         🗑 מחק

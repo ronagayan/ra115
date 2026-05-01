@@ -66,16 +66,23 @@ export default function useNotes(user) {
       (a.createdAt?.seconds || a.createdAt || 0)
     );
 
+  // Pull a specific note (by id) — marks it as `pulled: true` so it
+  // graduates from the jar to the cork board.
+  async function pullNote(noteId) {
+    if (!noteId) return null;
+    if (isLocal) {
+      local.patchItem(`notes:${incomingColl}`, noteId, { pulled: true });
+      return null;
+    }
+    await updateDoc(doc(db, 'notes', incomingColl, 'items', noteId), { pulled: true });
+    return null;
+  }
+
   async function pullRandomNote() {
     if (unpulled.length === 0) return null;
     const idx = Math.floor(Math.random() * unpulled.length);
     const note = unpulled[idx];
-
-    if (isLocal) {
-      local.patchItem(`notes:${incomingColl}`, note.id, { pulled: true });
-      return note;
-    }
-    await updateDoc(doc(db, 'notes', incomingColl, 'items', note.id), { pulled: true });
+    await pullNote(note.id);
     return note;
   }
 
@@ -101,13 +108,23 @@ export default function useNotes(user) {
     });
   }
 
-  // Edit/delete only work on outgoing notes (the ones I authored).
+  // Edit/delete on outgoing notes (the ones I authored).
   async function updateNote(noteId, patch) {
     if (isLocal) {
       local.patchItem(`notes:${outgoingColl}`, noteId, patch);
       return;
     }
     await updateDoc(doc(db, 'notes', outgoingColl, 'items', noteId), patch);
+  }
+
+  // Update an INCOMING note (one the other authored — used for live wordle
+  // guesses where the recipient is mutating fields on the author's note).
+  async function updateIncomingNote(noteId, patch) {
+    if (isLocal) {
+      local.patchItem(`notes:${incomingColl}`, noteId, patch);
+      return;
+    }
+    await updateDoc(doc(db, 'notes', incomingColl, 'items', noteId), patch);
   }
 
   async function deleteNote(noteId) {
@@ -125,9 +142,11 @@ export default function useNotes(user) {
     history,
     myNotes,
     loading,
+    pullNote,
     pullRandomNote,
     addNote,
     updateNote,
+    updateIncomingNote,
     deleteNote,
   };
 }
