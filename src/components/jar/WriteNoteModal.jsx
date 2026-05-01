@@ -89,6 +89,54 @@ export default function WriteNoteModal({ onClose, onSubmit, initial }) {
           <button onClick={onClose} className="text-muted hover:text-highlight text-xl">✕</button>
         </div>
 
+        {/* Note-type selector — pill toggle between regular note and Wordle */}
+        <div
+          className="flex p-1 rounded-full"
+          style={{ background: 'rgba(13,31,22,0.55)', border: '1px solid var(--accent)' }}
+        >
+          <button
+            type="button"
+            onClick={() => setWordleEnabled(false)}
+            className={`flex-1 py-2 text-sm font-body transition-all rounded-full ${
+              !wordleEnabled ? 'clay-primary' : 'text-muted'
+            }`}
+          >
+            ✦ פתק רגיל
+          </button>
+          <button
+            type="button"
+            onClick={() => setWordleEnabled(true)}
+            className={`flex-1 py-2 text-sm font-body transition-all rounded-full ${
+              wordleEnabled ? 'clay-primary' : 'text-muted'
+            }`}
+          >
+            🟩 פתק wordle
+          </button>
+        </div>
+
+        {wordleEnabled && (
+          <div className="flex flex-col gap-1">
+            <input
+              value={wordleWord}
+              onChange={(e) => setWordleWord(e.target.value.replace(/\s+/g, ''))}
+              placeholder="מילה לניחוש (3-7 אותיות)"
+              maxLength={WORDLE_MAX}
+              dir="rtl"
+              className="w-full rounded-lg px-3 py-2 text-center text-text-primary placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-highlight"
+              style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--accent)',
+                fontFamily: '"Courier Prime", monospace',
+                letterSpacing: '0.3em',
+                fontSize: '1.1rem',
+              }}
+            />
+            <p className="text-[11px] text-muted font-body italic px-1">
+              הצד השני יראה wordle משלך — והניחושים יוצגו לך בזמן אמת.
+            </p>
+          </div>
+        )}
+
         {/* Emoji picker */}
         <div className="flex flex-wrap gap-2">
           {EMOJIS.map((e) => (
@@ -152,41 +200,6 @@ export default function WriteNoteModal({ onClose, onSubmit, initial }) {
             className="hidden"
             onChange={handleImage}
           />
-        </div>
-
-        {/* Wordle toggle */}
-        <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: 'rgba(13,31,22,0.45)', border: '1px solid var(--accent)' }}>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={wordleEnabled}
-              onChange={(e) => setWordleEnabled(e.target.checked)}
-              className="w-4 h-4 accent-highlight"
-            />
-            <span className="text-text-primary font-body text-sm">🟩 צרף Wordle לפתק</span>
-          </label>
-
-          {wordleEnabled && (
-            <>
-              <input
-                value={wordleWord}
-                onChange={(e) => setWordleWord(e.target.value.replace(/\s+/g, ''))}
-                placeholder="מילה לניחוש (3-7 אותיות)"
-                maxLength={WORDLE_MAX}
-                dir="rtl"
-                className="w-full rounded-lg px-3 py-2 text-center font-mono text-text-primary placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-highlight"
-                style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--accent)',
-                  fontFamily: '"Courier Prime", monospace',
-                  letterSpacing: '0.3em',
-                }}
-              />
-              <p className="text-[11px] text-muted font-body italic">
-                הצד השני יראה את הפתק עם wordle משלך — והניחושים שלהם יוצגו לך בזמן אמת.
-              </p>
-            </>
-          )}
         </div>
 
         <button

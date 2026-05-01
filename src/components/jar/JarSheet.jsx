@@ -1,48 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 
-// A full-screen-width jar with two-stage interaction:
-//   peek  → bottom 25vh shows the jar's top (lid + neck)
-//   full  → jar fully visible on screen
+// Bottom-anchored full-width jar. The JAR itself is the draggable element
+// — there is no separate drawer/handle chrome.
 //
-// In the full state, the LID itself is draggable. Drag it up far enough or
-// throw it with enough velocity → physics takes over: gravity + initial
-// velocity carry it off the screen. Once gone, the notes inside (which have
-// been bouncing the whole time) become tappable, and tapping reads a note.
+// Closed: the top quarter of the screen shows the jar's TOP (lid + neck +
+// upper body). Drag UP anywhere on the jar → expands to a fully-visible
+// open state.
 //
-// One button below the jar: "להוסיף פתק".
+// LID gesture: once open, swipe horizontally on the lid to TWIST it.
+// After enough rotation (≥ ¾ turn) it pops off — gravity carries it off
+// the bottom of the screen. Once gone, the bouncing notes inside become
+// tappable.
+//
+// One CTA below the jar: "להוסיף פתק".
 
 const PEEK_VH = 25;
-const FULL_HEIGHT_VH = 88;
-const LID_LIFT_TO_THROW = 100;       // px of upward drag to commit the throw
-const LID_VELOCITY_TO_THROW = 6;     // px/frame at release to commit the throw
+const FULL_HEIGHT_VH = 90;
+const TWIST_THRESHOLD_DEG = 270; // ¾ of a turn to commit
+const PIXELS_PER_DEG = 2;        // horizontal swipe → degrees of rotation
 
-export default function JarSheet({
-  unpulled,
-  onPull,
-  onWrite,
-}) {
-  // Sheet stages
-  const [open, setOpen] = useState(false);          // peek ↔ full
-  const [lidThrown, setLidThrown] = useState(false); // lid has popped off
+export default function JarSheet({ unpulled, onPull, onWrite }) {
+  const [open, setOpen] = useState(false);
+  const [lidGone, setLidGone] = useState(false);
+  const [lid, setLid] = useState({ rot: 0, ty: 0, vy: 0 });
+  const [readingNote, setReadingNote] = useState(null);
 
-  // Lid drag/physics state
-  const [lid, setLid] = useState({ y: 0, x: 0, rot: 0, vx: 0, vy: 0 });
-  const lidDragRef = useRef({
-    active: false,
-    startX: 0, startY: 0,
-    lastX: 0, lastY: 0,
-    lastT: 0,
-    vx: 0, vy: 0,
-  });
-
-  // Sheet drag (peek → full)
+  // Sheet drag → lift jar from peek to full
   const sheetDragRef = useRef({ startY: null });
   const [sheetDragY, setSheetDragY] = useState(null);
 
-  // Note tap → read
-  const [readingNote, setReadingNote] = useState(null);
+  // Lid drag (horizontal twist)
+  const lidDragRef = useRef({ active: false, startX: 0, lastDx: 0 });
 
-  // Esc closes everything
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
@@ -54,26 +43,23 @@ export default function JarSheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, readingNote]);
 
-  // ── Lid physics: free-fall after thrown ──
+  // Lid free-fall once committed
   useEffect(() => {
-    if (!lidThrown) return;
+    if (!lidGone) return;
     let raf;
     function tick() {
-      setLid((p) => {
-        const nx = p.x + p.vx;
-        const ny = p.y + p.vy;
-        const nvy = p.vy + 0.7; // gravity
-        const nvx = p.vx * 0.995;
-        const nrot = p.rot + p.vx * 0.4;
-        return { x: nx, y: ny, vx: nvx, vy: nvy, rot: nrot };
-      });
+      setLid((p) => ({
+        rot: p.rot + 6,
+        ty: p.ty + p.vy,
+        vy: p.vy + 0.7,
+      }));
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [lidThrown]);
+  }, [lidGone]);
 
-  // ── Sheet drag (lift jar from peek) ──
+  // — Sheet drag handlers —
   function sheetPointerDown(e) {
     if (open) return;
     e.preventDefault();
@@ -91,69 +77,43 @@ export default function JarSheet({
     const dy = e.clientY - sheetDragRef.current.startY;
     sheetDragRef.current.startY = null;
     setSheetDragY(null);
-    if (dy < -40 || Math.abs(dy) < 6) {
-      setOpen(true);
-    }
+    if (dy < -40 || Math.abs(dy) < 6) setOpen(true);
   }
 
-  // ── Lid drag ──
+  // — Lid twist handlers —
   function lidPointerDown(e) {
-    if (!open || lidThrown) return;
+    if (!open || lidGone) return;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    const now = performance.now();
-    lidDragRef.current = {
-      active: true,
-      startX: e.clientX, startY: e.clientY,
-      lastX: e.clientX, lastY: e.clientY,
-      lastT: now,
-      vx: 0, vy: 0,
-    };
+    lidDragRef.current.active = true;
+    lidDragRef.current.startX = e.clientX;
+    lidDragRef.current.lastDx = 0;
   }
   function lidPointerMove(e) {
     if (!lidDragRef.current.active) return;
-    const now = performance.now();
-    const dt = Math.max(1, now - lidDragRef.current.lastT);
-    const fdx = e.clientX - lidDragRef.current.lastX;
-    const fdy = e.clientY - lidDragRef.current.lastY;
-    // Velocity in px/frame (~16.67ms)
-    lidDragRef.current.vx = (fdx / dt) * 16;
-    lidDragRef.current.vy = (fdy / dt) * 16;
-    lidDragRef.current.lastX = e.clientX;
-    lidDragRef.current.lastY = e.clientY;
-    lidDragRef.current.lastT = now;
-
+    e.stopPropagation();
     const dx = e.clientX - lidDragRef.current.startX;
-    const dy = e.clientY - lidDragRef.current.startY;
-    setLid({ x: dx, y: dy, rot: dx * 0.2, vx: 0, vy: 0 });
+    lidDragRef.current.lastDx = dx;
+    setLid((p) => ({ ...p, rot: dx / PIXELS_PER_DEG }));
   }
   function lidPointerUp(e) {
     if (!lidDragRef.current.active) return;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
+    e.stopPropagation();
     lidDragRef.current.active = false;
-
-    const dy = e.clientY - lidDragRef.current.startY;
-    const speed = Math.hypot(lidDragRef.current.vx, lidDragRef.current.vy);
-    const liftedEnough = dy < -LID_LIFT_TO_THROW;
-    const thrown = liftedEnough || speed > LID_VELOCITY_TO_THROW;
-
-    if (thrown) {
-      // Commit physics: keep current position, give it the release velocity,
-      // and ensure some upward kick so it actually flies up before falling.
-      setLid((p) => ({
-        ...p,
-        vx: lidDragRef.current.vx || 0,
-        vy: Math.min(lidDragRef.current.vy, -8), // always going up at release
-      }));
-      setLidThrown(true);
+    const totalDeg = Math.abs(lidDragRef.current.lastDx / PIXELS_PER_DEG);
+    if (totalDeg >= TWIST_THRESHOLD_DEG) {
+      // Pop off: keep current rotation, give it upward then falling velocity
+      setLid((p) => ({ ...p, vy: -8 }));
+      setLidGone(true);
     } else {
       // Snap back
-      setLid({ x: 0, y: 0, rot: 0, vx: 0, vy: 0 });
+      setLid({ rot: 0, ty: 0, vy: 0 });
     }
   }
 
-  // Dynamic sheet height
+  // Sheet height
   let sheetHeight = open ? `${FULL_HEIGHT_VH}vh` : `${PEEK_VH}vh`;
   if (sheetDragY !== null && !open) {
     const peekPx = (PEEK_VH / 100) * window.innerHeight;
@@ -162,27 +122,24 @@ export default function JarSheet({
     sheetHeight = `${liveH}px`;
   }
 
-  // Notes are positioned inside the jar interior. We compute slots once and
-  // animate via CSS keyframes (cheap, no per-frame React updates). Each note
-  // gets a deterministic seed.
   const notesToShow = unpulled.slice(0, 12);
 
   function handleReadNote(note) {
-    if (!lidThrown) return;
+    if (!lidGone) return;
     setReadingNote(note);
   }
 
   async function dismissReadNote() {
-    if (readingNote) {
-      // Mark it pulled — moves to the cork board.
-      await onPull(readingNote.id);
-    }
+    if (readingNote) await onPull(readingNote.id);
     setReadingNote(null);
   }
 
+  // Twist progress hint
+  const twistProgress = Math.min(Math.abs(lid.rot) / TWIST_THRESHOLD_DEG, 1);
+
   return (
     <>
-      {/* Backdrop dim when fully open */}
+      {/* Backdrop dim */}
       <div
         onClick={() => setOpen(false)}
         aria-hidden="true"
@@ -196,90 +153,56 @@ export default function JarSheet({
         }}
       />
 
-      {/* The sheet */}
+      {/* The jar IS the sheet — no chrome / pill / hint text */}
       <section
-        className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center select-none overflow-hidden"
+        className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center select-none overflow-visible"
         style={{
           height: sheetHeight,
-          transition: sheetDragY !== null
-            ? 'none'
-            : 'height 480ms cubic-bezier(.34,1.4,.5,1)',
+          transition: sheetDragY !== null ? 'none' : 'height 480ms cubic-bezier(.34,1.4,.5,1)',
           willChange: 'height',
           touchAction: 'none',
-          background:
-            'linear-gradient(180deg,' +
-            'rgba(13,31,22,0) 0%,' +
-            'rgba(13,31,22,0.5) 6%,' +
-            '#1a3a2a 14%,' +
-            '#0f2418 100%)',
-          boxShadow: open ? '0 -25px 60px -10px rgba(0,0,0,0.7)' : '0 -10px 24px -8px rgba(0,0,0,0.5)',
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
         }}
-        onPointerDown={sheetPointerDown}
-        onPointerMove={sheetPointerMove}
-        onPointerUp={sheetPointerUp}
-        onPointerCancel={sheetPointerUp}
       >
-        {/* Drag handle */}
-        <div className="w-full flex flex-col items-center pt-3 pb-2 flex-shrink-0">
-          <div
-            className="w-12 h-1.5 rounded-full"
-            style={{
-              background: 'rgba(216,243,220,0.45)',
-              boxShadow: '0 1px 0 rgba(0,0,0,0.4)',
-            }}
-          />
-          {!open && (
-            <p className="text-muted text-[11px] font-body italic mt-1.5 tracking-wider animate-pulse">
-              ↑ הרם את הצנצנת ↑
-            </p>
-          )}
-        </div>
-
-        {/* Wood shelf */}
+        {/* Wide-jar body — full width. Drag handlers live on the body
+            so the user lifts the jar itself. */}
         <div
-          className="w-full h-2 flex-shrink-0"
-          style={{
-            background: 'linear-gradient(180deg,#5a3a1a 0%,#3a2510 50%,#1f1408 100%)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          }}
-        />
-
-        {/* Wide jar, takes full sheet width */}
-        <div className="w-full flex-1 flex flex-col items-center justify-start pt-2 relative">
+          className="relative w-full flex-1"
+          onPointerDown={sheetPointerDown}
+          onPointerMove={sheetPointerMove}
+          onPointerUp={sheetPointerUp}
+          onPointerCancel={sheetPointerUp}
+        >
           <WideJar
             notesToShow={notesToShow}
-            lidThrown={lidThrown}
+            lidGone={lidGone}
             lid={lid}
+            twistProgress={twistProgress}
             onLidPointerDown={lidPointerDown}
             onLidPointerMove={lidPointerMove}
             onLidPointerUp={lidPointerUp}
             onReadNote={handleReadNote}
             interactive={open}
           />
+        </div>
 
-          {/* Single CTA — only when open */}
-          {open && (
+        {/* CTA + close — only when fully open */}
+        {open && (
+          <div className="w-full px-6 pb-5 flex flex-col items-center gap-3">
             <button
               onClick={onWrite}
-              className="clay-primary mt-4 px-7 py-3.5 font-body font-semibold text-base"
+              className="clay-primary px-7 py-3.5 font-body font-semibold text-base"
             >
               ✦ להוסיף פתק
             </button>
-          )}
-
-          {/* Close button when open */}
-          {open && (
             <button
               onClick={() => setOpen(false)}
-              className="clay-soft absolute top-1 right-4 w-9 h-9 flex items-center justify-center text-muted text-sm"
+              className="clay-soft absolute top-2 right-4 w-9 h-9 flex items-center justify-center text-muted text-sm"
               aria-label="סגור"
             >
               ✕
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
       {/* Read-note lightbox */}
@@ -311,9 +234,7 @@ export default function JarSheet({
                 boxShadow: '0 30px 60px -15px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.45)',
               }}
             >
-              {readingNote.emoji && (
-                <div className="text-4xl text-center mb-3">{readingNote.emoji}</div>
-              )}
+              {readingNote.emoji && <div className="text-4xl text-center mb-3">{readingNote.emoji}</div>}
               {readingNote.imageUrl && (
                 <img
                   src={readingNote.imageUrl}
@@ -342,27 +263,22 @@ export default function JarSheet({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// The jar itself: wide as the sheet, with lid + glass body + bouncing notes.
-// ────────────────────────────────────────────────────────────────────────────
 function WideJar({
-  notesToShow, lidThrown, lid,
+  notesToShow, lidGone, lid, twistProgress,
   onLidPointerDown, onLidPointerMove, onLidPointerUp,
   onReadNote, interactive,
 }) {
   return (
-    <div
-      className="relative w-full"
-      style={{ height: '100%', maxHeight: 540, minHeight: 360 }}
-    >
-      {/* Glass body — full width minus a margin, ~75% height */}
+    <div className="relative w-full h-full">
+      {/* Glass body */}
       <div
         className="absolute"
         style={{
-          left: '5%',
-          right: '5%',
-          top: 60,
+          left: '4%',
+          right: '4%',
+          top: 50,
           bottom: 0,
-          borderRadius: '18px 18px 28px 28px',
+          borderRadius: '14px 14px 26px 26px',
           background:
             'linear-gradient(135deg,' +
             'rgba(216,243,220,0.06) 0%,' +
@@ -373,7 +289,8 @@ function WideJar({
           boxShadow:
             'inset 8px 0 20px rgba(216,243,220,0.10),' +
             'inset -8px 0 30px rgba(0,0,0,0.4),' +
-            'inset 0 -20px 40px rgba(0,0,0,0.45)',
+            'inset 0 -20px 40px rgba(0,0,0,0.45),' +
+            '0 -10px 30px rgba(0,0,0,0.4)',
           border: '1.5px solid rgba(13,31,22,0.55)',
           overflow: 'hidden',
           pointerEvents: 'none',
@@ -383,7 +300,7 @@ function WideJar({
         <div
           className="absolute"
           style={{
-            left: '8%',
+            left: '7%',
             top: '5%',
             bottom: '15%',
             width: 14,
@@ -393,10 +310,10 @@ function WideJar({
           }}
         />
 
-        {/* Bouncing notes — purely CSS animations, deterministic per index */}
+        {/* Bouncing notes */}
         {notesToShow.map((note, i) => {
           const seed = i;
-          const left = 12 + ((seed * 23) % 70);
+          const left = 10 + ((seed * 23) % 75);
           const dur = 4 + (seed % 5);
           const delay = (seed * 0.7) % 5;
           const tilt = ((seed * 37) % 24) - 12;
@@ -404,19 +321,19 @@ function WideJar({
             <button
               key={note.id || i}
               onClick={() => onReadNote(note)}
-              disabled={!interactive || !lidThrown}
+              disabled={!interactive || !lidGone}
               className="absolute pointer-events-auto"
               style={{
                 left: `${left}%`,
-                bottom: 8 + ((seed * 31) % 200),
-                width: 56,
-                height: 38,
+                bottom: 8 + ((seed * 31) % 240),
+                width: 60,
+                height: 40,
                 background: 'linear-gradient(170deg,#f5ecd0 0%,#e6d5a8 100%)',
                 boxShadow: '0 3px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(80,55,20,0.25)',
                 borderRadius: 2,
                 transform: `rotate(${tilt}deg)`,
                 animation: `noteFloat${seed % 4} ${dur}s ease-in-out ${delay}s infinite`,
-                cursor: lidThrown ? 'pointer' : 'default',
+                cursor: lidGone ? 'pointer' : 'default',
                 opacity: 0.95,
               }}
             >
@@ -434,17 +351,18 @@ function WideJar({
         )}
       </div>
 
-      {/* Lid + neck — draggable */}
-      {!lidThrown && (
+      {/* Lid — rotates horizontally; once committed, lid flies away */}
+      {!lidGone && (
         <div
           className="absolute"
           style={{
             left: '8%',
             right: '8%',
             top: 0,
-            height: 70,
-            transform: `translate(${lid.x}px, ${lid.y}px) rotate(${lid.rot}deg)`,
-            transition: lid.vx === 0 && lid.vy === 0 && lid.x === 0 && lid.y === 0
+            height: 60,
+            transformOrigin: '50% 50%',
+            transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
+            transition: lid.rot === 0 && lid.ty === 0
               ? 'transform 220ms cubic-bezier(.34,1.56,.64,1)'
               : 'none',
             cursor: interactive ? 'grab' : 'default',
@@ -455,7 +373,7 @@ function WideJar({
           onPointerUp={onLidPointerUp}
           onPointerCancel={onLidPointerUp}
         >
-          {/* Brass lid */}
+          {/* Brass cap */}
           <div
             className="absolute"
             style={{
@@ -463,51 +381,58 @@ function WideJar({
               height: 50,
               borderRadius: '6px 6px 0 0',
               background:
-                'linear-gradient(180deg,' +
-                '#f4d28a 0%,' +
-                '#d4a657 22%,' +
-                '#a87a3d 50%,' +
-                '#7c5526 78%,' +
-                '#4f3416 100%)',
+                'linear-gradient(180deg,#f4d28a 0%,#d4a657 22%,#a87a3d 50%,#7c5526 78%,#4f3416 100%)',
               boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.45), 0 6px 12px rgba(0,0,0,0.5)',
             }}
           >
-            {/* threads */}
+            {/* threads + grip ridges that show the rotation */}
             <div className="absolute inset-x-0" style={{ top: 8, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
             <div className="absolute inset-x-0" style={{ top: 18, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 28, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 38, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
           </div>
-          {/* lid rim under */}
           <div
             className="absolute"
             style={{
-              left: -4, right: -4, top: 50,
-              height: 8,
+              left: -4, right: -4, top: 50, height: 8,
               borderRadius: 2,
               background: 'linear-gradient(180deg,#7c5526 0%,#d4a657 50%,#7c5526 100%)',
               boxShadow: '0 4px 6px rgba(0,0,0,0.35)',
             }}
           />
-          {/* hint when open and lid is fresh */}
-          {interactive && lid.x === 0 && lid.y === 0 && (
+          {/* Twist progress ring around the cap */}
+          {interactive && twistProgress > 0 && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: -6,
+                right: -6,
+                top: -6,
+                height: 70,
+                borderRadius: '12px 12px 0 0',
+                border: '2px dashed rgba(82,183,136,0.7)',
+                opacity: twistProgress,
+              }}
+            />
+          )}
+          {interactive && lid.rot === 0 && (
             <div className="absolute -top-6 inset-x-0 text-center text-muted text-[10px] font-body italic animate-pulse">
-              ↑ הרם / זרוק ↑
+              ↶ סובב את המכסה ↷
             </div>
           )}
         </div>
       )}
 
-      {/* Thrown lid still rendered but flying around */}
-      {lidThrown && (
+      {/* Thrown lid */}
+      {lidGone && (
         <div
           className="absolute pointer-events-none"
           style={{
             left: '8%',
             right: '8%',
             top: 0,
-            height: 70,
-            transform: `translate(${lid.x}px, ${lid.y}px) rotate(${lid.rot}deg)`,
+            height: 60,
+            transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
             zIndex: 60,
           }}
         >
@@ -517,8 +442,7 @@ function WideJar({
               left: 0, right: 0, top: 0,
               height: 50,
               borderRadius: '6px 6px 0 0',
-              background:
-                'linear-gradient(180deg,#f4d28a 0%,#d4a657 22%,#a87a3d 50%,#7c5526 78%,#4f3416 100%)',
+              background: 'linear-gradient(180deg,#f4d28a 0%,#d4a657 22%,#a87a3d 50%,#7c5526 78%,#4f3416 100%)',
               boxShadow: '0 6px 12px rgba(0,0,0,0.5)',
             }}
           />
@@ -532,7 +456,6 @@ function WideJar({
         </div>
       )}
 
-      {/* Floating note keyframes */}
       <style>{`
         @keyframes noteFloat0 { 0%, 100% { translate: 0 0; } 50% { translate: 6px -10px; } }
         @keyframes noteFloat1 { 0%, 100% { translate: 0 0; } 50% { translate: -8px -14px; } }
