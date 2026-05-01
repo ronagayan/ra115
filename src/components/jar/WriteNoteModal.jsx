@@ -1,6 +1,5 @@
-import { useState, useRef } from 'react';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../firebase';
+import { useEffect, useRef, useState } from 'react';
+import imageToBase64 from '../../lib/imageToBase64';
 
 const EMOJIS = ['💚','❤️','✨','🌸','🥰','😊','🌙','⭐','🎉','🫂','💫','🌿'];
 
@@ -12,17 +11,24 @@ export default function WriteNoteModal({ onClose, onSubmit }) {
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
 
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   async function handleImage(e) {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
     try {
-      const r = storageRef(storage, `notes/${Date.now()}_${file.name}`);
-      await uploadBytes(r, file);
-      const url = await getDownloadURL(r);
-      setImageUrl(url);
-    } catch {
-      alert('שגיאה בהעלאת התמונה');
+      const dataUrl = await imageToBase64(file);
+      setImageUrl(dataUrl);
+    } catch (err) {
+      console.error('image processing failed', err);
+      alert('שגיאה בעיבוד התמונה');
     }
     setUploading(false);
   }
@@ -30,15 +36,29 @@ export default function WriteNoteModal({ onClose, onSubmit }) {
   async function handleSubmit() {
     if (!text.trim()) return;
     setSaving(true);
-    await onSubmit({ text: text.trim(), emoji, imageUrl });
-    setSaving(false);
-    onClose();
+    try {
+      await onSubmit({ text: text.trim(), emoji, imageUrl });
+      onClose();
+    } catch (err) {
+      console.error('save failed', err);
+      alert('שגיאה בשליחת הפתק. נסי שוב.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
-         style={{ background: 'rgba(13,31,22,0.85)', backdropFilter: 'blur(8px)' }}>
-      <div className="w-full max-w-md p-6 flex flex-col gap-4 clay rounded-t-[28px] sm:rounded-[28px]">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
+      style={{ background: 'rgba(13,31,22,0.85)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md p-6 flex flex-col gap-4 clay rounded-t-[28px] sm:rounded-[28px]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xl text-text-primary">כתוב פתק 💚</h2>
           <button onClick={onClose} className="text-muted hover:text-highlight text-xl">✕</button>
@@ -71,21 +91,42 @@ export default function WriteNoteModal({ onClose, onSubmit }) {
           dir="rtl"
         />
 
-        {/* Image */}
+        {/* Image preview */}
+        {imageUrl && (
+          <div className="relative">
+            <img
+              src={imageUrl}
+              alt=""
+              className="w-full max-h-48 object-cover rounded-xl"
+              style={{ boxShadow: '0 4px 10px rgba(0,0,0,0.35)' }}
+            />
+            <button
+              onClick={() => setImageUrl('')}
+              className="absolute top-2 left-2 w-8 h-8 rounded-full bg-bg/80 text-text-primary text-sm flex items-center justify-center"
+              aria-label="הסר תמונה"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Image picker */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="text-sm text-muted hover:text-highlight transition-colors font-body flex items-center gap-1"
+            className="clay-soft px-3 py-2 text-sm text-muted font-body flex items-center gap-1 disabled:opacity-50"
           >
-            📷 {uploading ? 'מעלה...' : imageUrl ? 'תמונה נבחרה ✓' : 'הוסף תמונה'}
+            📷 {uploading ? 'מעבד...' : imageUrl ? 'החלף תמונה' : 'הוסף תמונה'}
           </button>
-          {imageUrl && (
-            <button onClick={() => setImageUrl('')} className="text-xs text-red-400 hover:text-red-300">
-              הסר
-            </button>
-          )}
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImage} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleImage}
+          />
         </div>
 
         <button

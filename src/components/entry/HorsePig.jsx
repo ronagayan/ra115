@@ -166,19 +166,29 @@ export default function HorsePig({ onSwipe }) {
             boxShadow: 'inset 0 0 12px rgba(120,90,40,0.25)',
           }}
         >
-          {/* The drawing */}
+          {/* The drawing — explicit <img> so resolution is honored, with
+              cache-bust query so a fresh deploy doesn't show the old SW-cached
+              1×1 placeholder. Light tan background so the line drawing pops. */}
           <div
-            className="absolute"
+            className="absolute flex items-center justify-center"
             style={{
-              inset: 14,
-              background: '#fff',
-              backgroundImage: 'url(/horse-pig.png)',
-              backgroundSize: 'contain',
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'center',
-              boxShadow: 'inset 0 0 18px rgba(120,90,40,0.18)',
+              inset: 10,
+              background: '#fffaf0',
+              boxShadow: 'inset 0 0 18px rgba(120,90,40,0.22)',
+              overflow: 'hidden',
             }}
-          />
+          >
+            <img
+              src="/horse-pig.png?v=2"
+              alt="pig"
+              draggable={false}
+              className="w-full h-full"
+              style={{
+                objectFit: 'contain',
+                filter: 'contrast(1.15) brightness(0.92)',
+              }}
+            />
+          </div>
         </div>
         {/* Mitered-corner highlights on the wood frame */}
         <div

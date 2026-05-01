@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import Jar from '../components/jar/Jar';
+import JarSheet from '../components/jar/JarSheet';
 import WriteNoteModal from '../components/jar/WriteNoteModal';
 import NoteHistory from '../components/jar/NoteHistory';
 import CorkBoard from '../components/gallery/CorkBoard';
@@ -17,7 +17,7 @@ export default function Home({ user }) {
 
   return (
     <div
-      className="min-h-dvh flex flex-col relative"
+      className="min-h-dvh flex flex-col relative overflow-x-hidden"
       dir="rtl"
       style={{
         background:
@@ -35,7 +35,7 @@ export default function Home({ user }) {
         }}
       />
 
-      <div className="relative z-10 flex flex-col flex-1">
+      <div className="relative z-10 flex flex-col flex-1 pb-[140px]">
         {/* Header */}
         <header className="flex items-center justify-between px-5 pt-6 pb-2">
           <div>
@@ -71,39 +71,22 @@ export default function Home({ user }) {
           <CorkBoard history={history} />
         </section>
 
-        {/* Jar */}
-        <section
-          className="flex-1 flex flex-col items-center justify-center py-10 px-5
-                     animate-fadeInUp stagger-3 opacity-0-init"
-          style={{ animationFillMode: 'forwards' }}
-        >
-          <div className="relative w-full max-w-sm flex flex-col items-center">
-            <Jar
-              unpulled={unpulled}
-              onPull={pullRandomNote}
-              onWrite={() => setShowWrite(true)}
-              onHistory={() => setShowHistory(true)}
-            />
-            <div
-              className="mt-2 w-72 h-2 rounded-sm"
-              style={{
-                background: 'linear-gradient(180deg,#5a3a1a 0%,#3a2510 50%,#1f1408 100%)',
-                boxShadow: '0 6px 12px rgba(0,0,0,0.5)',
-              }}
-            />
-            <div
-              className="w-80 h-1 rounded-sm opacity-70"
-              style={{ background: 'rgba(0,0,0,0.6)', filter: 'blur(2px)' }}
-            />
-          </div>
-        </section>
+        <div className="flex-1" />
 
-        <footer className="px-5 pb-6 text-center">
+        <footer className="px-5 pb-3 text-center">
           <p className="text-muted/60 text-[10px] font-body tracking-[0.3em] uppercase">
             🌿 שתי שנים יחד 🌿
           </p>
         </footer>
       </div>
+
+      {/* Bottom drawer — peeks into view, drag up to open */}
+      <JarSheet
+        unpulled={unpulled}
+        onPull={pullRandomNote}
+        onWrite={() => setShowWrite(true)}
+        onHistory={() => setShowHistory(true)}
+      />
 
       {showWrite && (
         <WriteNoteModal
