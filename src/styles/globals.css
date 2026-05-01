@@ -1,0 +1,198 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg:        #0d1f16;
+    --surface:   #1a3a2a;
+    --accent:    #2d6a4f;
+    --highlight: #52b788;
+    --text:      #d8f3dc;
+    --muted:     #74c69d;
+    --gold:      #f4a261;
+  }
+
+  html, body {
+    @apply bg-bg text-text-primary font-body;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+
+  .opacity-0-init {
+    opacity: 0;
+  }
+
+  .glass {
+    background: rgba(26, 58, 42, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(82, 183, 136, 0.15);
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+  .paper-grain {
+    background-image:
+      radial-gradient(rgba(120, 90, 40, 0.08) 1px, transparent 1px),
+      radial-gradient(rgba(120, 90, 40, 0.05) 1px, transparent 1px);
+    background-size: 4px 4px, 7px 7px;
+    background-position: 0 0, 2px 2px;
+  }
+
+  /* ──── CLAYMORPHISM ──── */
+  /* Universal soft, puffy 3D surface. Apply directly OR use modifier classes. */
+  .clay {
+    background: linear-gradient(150deg, #20503b 0%, #143020 100%);
+    border-radius: 24px;
+    border: none;
+    box-shadow:
+      10px 10px 24px rgba(0, 0, 0, 0.45),
+      -6px -6px 16px rgba(82, 183, 136, 0.06),
+      inset 2px 2px 5px rgba(216, 243, 220, 0.10),
+      inset -2px -2px 5px rgba(0, 0, 0, 0.30);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  /* Primary CTA — fresh leaf green */
+  .clay-primary {
+    background: linear-gradient(150deg, #82d6a8 0%, #3e9a6e 100%);
+    color: #0d1f16;
+    border-radius: 26px;
+    box-shadow:
+      8px 8px 20px rgba(0, 0, 0, 0.45),
+      -4px -4px 12px rgba(125, 214, 166, 0.20),
+      inset 2px 2px 5px rgba(255, 255, 255, 0.45),
+      inset -3px -3px 6px rgba(0, 0, 0, 0.20);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  /* Secondary surface — muted depth */
+  .clay-soft {
+    background: linear-gradient(150deg, #2a5b42 0%, #16301f 100%);
+    border-radius: 22px;
+    box-shadow:
+      6px 6px 16px rgba(0, 0, 0, 0.40),
+      -3px -3px 10px rgba(82, 183, 136, 0.08),
+      inset 1px 1px 3px rgba(216, 243, 220, 0.10),
+      inset -1px -1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  /* Accent — golden / warning-style */
+  .clay-gold {
+    background: linear-gradient(150deg, #f6c87a 0%, #c9772d 100%);
+    color: #3a1f08;
+    border-radius: 26px;
+    box-shadow:
+      8px 8px 20px rgba(0, 0, 0, 0.45),
+      -4px -4px 12px rgba(244, 162, 97, 0.20),
+      inset 2px 2px 5px rgba(255, 255, 255, 0.45),
+      inset -3px -3px 6px rgba(0, 0, 0, 0.20);
+  }
+
+  /* Pressed-in / inset state — for active buttons or toggled controls */
+  .clay-pressed,
+  .clay:active,
+  .clay-primary:active,
+  .clay-soft:active,
+  .clay-gold:active {
+    box-shadow:
+      inset 5px 5px 10px rgba(0, 0, 0, 0.40),
+      inset -2px -2px 6px rgba(255, 255, 255, 0.10),
+      0 0 0 transparent;
+    transform: translateY(1px) scale(0.985);
+  }
+
+  /* Inset well — for dial display, score readout */
+  .clay-well {
+    background: linear-gradient(150deg, #0a1810 0%, #14281c 100%);
+    border-radius: 18px;
+    box-shadow:
+      inset 5px 5px 12px rgba(0, 0, 0, 0.55),
+      inset -2px -2px 6px rgba(82, 183, 136, 0.10),
+      0 1px 0 rgba(216, 243, 220, 0.06);
+  }
+
+  /* ──── CORK BOARD ──── */
+  .cork-surface {
+    background-color: #b88652;
+    background-image:
+      radial-gradient(circle at 15% 25%, rgba(58, 30, 10, 0.55) 0.8px, transparent 1.2px),
+      radial-gradient(circle at 65% 70%, rgba(120, 75, 35, 0.5) 1px, transparent 1.4px),
+      radial-gradient(circle at 35% 80%, rgba(58, 30, 10, 0.4) 0.8px, transparent 1.2px),
+      radial-gradient(circle at 80% 15%, rgba(150, 100, 55, 0.5) 1px, transparent 1.4px),
+      radial-gradient(circle at 45% 50%, rgba(95, 55, 25, 0.6) 0.7px, transparent 1px),
+      radial-gradient(circle at 90% 90%, rgba(58, 30, 10, 0.45) 0.9px, transparent 1.3px),
+      linear-gradient(135deg, #c08a55 0%, #a26d3e 50%, #8a5a30 100%);
+    background-size: 14px 14px, 18px 18px, 11px 11px, 22px 22px, 9px 9px, 17px 17px, 100% 100%;
+    background-position: 0 0, 3px 5px, 7px 2px, 1px 9px, 5px 7px, 11px 4px, 0 0;
+    box-shadow:
+      inset 0 0 80px rgba(58, 30, 10, 0.55),
+      inset 0 8px 16px rgba(58, 30, 10, 0.4);
+  }
+
+  .wood-frame {
+    background:
+      linear-gradient(180deg, #6b4626 0%, #4f311a 50%, #3a2410 100%);
+    background-image:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent 8px,
+        rgba(0, 0, 0, 0.12) 8px,
+        rgba(0, 0, 0, 0.12) 9px
+      ),
+      linear-gradient(180deg, #6b4626 0%, #4f311a 50%, #3a2410 100%);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 220, 180, 0.18),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.45);
+  }
+
+  .pushpin {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ff8a6a, #b32b1c 65%, #6b1810 100%);
+    box-shadow:
+      0 2px 3px rgba(0, 0, 0, 0.55),
+      inset -1.5px -1.5px 2px rgba(0, 0, 0, 0.5),
+      inset 1.5px 1.5px 2px rgba(255, 220, 200, 0.55);
+  }
+  .pushpin-blue { background: radial-gradient(circle at 30% 30%, #7fb8ff, #1f5fb8 65%, #0e2e60 100%); }
+  .pushpin-yellow { background: radial-gradient(circle at 30% 30%, #ffeaa1, #c99a1a 65%, #6e520a 100%); }
+  .pushpin-green { background: radial-gradient(circle at 30% 30%, #b3f2c8, #3a9667 65%, #1d4a32 100%); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+/* No outline on touch */
+button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+
+/* Safe area */
+.safe-pb { padding-bottom: env(safe-area-inset-bottom, 16px); }
