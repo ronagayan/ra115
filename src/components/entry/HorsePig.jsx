@@ -1,90 +1,67 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
-// Picture frame whose BOTTOM-RIGHT corner is its hanging point.
-// At rest the frame is upright (covering the wall behind it).
-// Drag right → frame rotates COUNTER-CLOCKWISE around its BR corner so the
-// rest of the frame swings down-and-to-the-left. Past commit, it dangles
-// at -90° with a gentle pendulum sway and BR stays at the top of the picture.
+// Drag the picture rightward → it tumbles off the screen, revealing the
+// rope that's been waiting behind it.
 
-const COMMIT_DEG = -90;        // CCW so BR ends up at the top
-const COMMIT_THRESHOLD = 130;  // px of horizontal drag to commit
-
+const COMMIT_THRESHOLD = 130;     // px of horizontal drag to commit the throw
 const FRAME_W = 240;
 const FRAME_H = 280;
 
-export default function HorsePig({ onSwipe, hanging: hangingProp = false }) {
-  const [rot, setRot] = useState(0);
-  const [committed, setCommitted] = useState(hangingProp);
+export default function HorsePig({ onSwipe }) {
+  const [dx, setDx] = useState(0);
+  const [thrown, setThrown] = useState(false);
   const startXRef = useRef(null);
 
-  useEffect(() => {
-    if (hangingProp && !committed) {
-      setCommitted(true);
-      setRot(COMMIT_DEG);
-    }
-  }, [hangingProp, committed]);
-
   function handlePointerDown(e) {
-    if (committed) return;
+    if (thrown) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     startXRef.current = e.clientX;
   }
   function handlePointerMove(e) {
     if (startXRef.current === null) return;
-    const dx = e.clientX - startXRef.current;
-    if (dx > 0) {
-      const t = Math.min(dx / COMMIT_THRESHOLD, 1);
-      setRot(t * COMMIT_DEG);
-    } else {
-      setRot(0);
-    }
+    const x = e.clientX - startXRef.current;
+    if (x > 0) setDx(x);
   }
   function handlePointerUp(e) {
     e.currentTarget.releasePointerCapture?.(e.pointerId);
     if (startXRef.current === null) return;
-    const dx = e.clientX - startXRef.current;
+    const x = e.clientX - startXRef.current;
     startXRef.current = null;
-    if (dx >= COMMIT_THRESHOLD) {
-      setCommitted(true);
-      setRot(COMMIT_DEG);
-      setTimeout(() => onSwipe?.(), 600);
+    if (x >= COMMIT_THRESHOLD) {
+      setThrown(true);
+      // The CSS transition below carries the frame off-screen; advance the
+      // stage in the parent once it's fully gone.
+      setTimeout(() => onSwipe?.(), 700);
     } else {
-      setRot(0);
+      setDx(0);
     }
   }
+
+  // Live tilt while dragging — proportional, capped at 35° before commit.
+  const liveTilt = Math.min(dx / COMMIT_THRESHOLD, 1) * 35;
+  const liveTransform = `translate(${dx}px, 0) rotate(${liveTilt}deg)`;
+  // After commit: fly hard right + tumble + fall.
+  const thrownTransform = `translate(${typeof window !== 'undefined' ? window.innerWidth + 200 : 1000}px, 250px) rotate(720deg)`;
 
   return (
     <div
       className="relative select-none"
-      // Reserves space for both poses:
-      //  - rest: frame width × height (240 × 280)
-      //  - dangling (after -90° around BR): height × width (280 × 240)
-      // BR is anchored at (right: 0, top: 0) so:
-      //  - rest pose extends UP-LEFT from BR but with top: 0 it's clamped
-      //    so the frame visually sits below the BR anchor — that's fine
-      //    because we want BR at the TOP of the picture both before and
-      //    after the swing.
-      //  - dangling pose extends DOWN-LEFT from BR.
-      // Container: width = max(W,H), height = W + H.
-      style={{ width: FRAME_H, height: FRAME_W + FRAME_H }}
+      style={{ width: FRAME_W, height: FRAME_H + 40 }}
     >
       <div
-        className="absolute cursor-grab active:cursor-grabbing"
+        className="absolute inset-0 cursor-grab active:cursor-grabbing"
         style={{
-          right: 0,
-          top: 0,
           width: FRAME_W,
           height: FRAME_H,
-          transformOrigin: '100% 100%',
-          transform: committed ? '' : `rotate(${rot}deg)`,
-          transition:
-            startXRef.current === null
-              ? committed
-                ? 'transform 700ms cubic-bezier(.34,1.4,.5,1)'
-                : 'transform 350ms cubic-bezier(.34,1.56,.64,1)'
+          transformOrigin: '50% 50%',
+          transform: thrown ? thrownTransform : liveTransform,
+          transition: thrown
+            ? 'transform 700ms cubic-bezier(.55,.05,.6,.95), opacity 600ms ease 200ms'
+            : startXRef.current === null
+              ? 'transform 350ms cubic-bezier(.34,1.56,.64,1)'
               : 'none',
-          animation: committed ? 'pigSway 4.5s ease-in-out infinite 0.7s' : 'none',
+          opacity: thrown ? 0 : 1,
           touchAction: 'none',
           filter: 'drop-shadow(0 14px 18px rgba(0,0,0,0.55))',
         }}
@@ -164,8 +141,7 @@ export default function HorsePig({ onSwipe, hanging: hangingProp = false }) {
         />
       </div>
 
-      {/* Hint */}
-      {!committed && (
+      {!thrown && (
         <p
           className="absolute inset-x-0 text-center text-muted text-xs font-body italic animate-pulse"
           style={{ bottom: 0 }}
@@ -173,15 +149,6 @@ export default function HorsePig({ onSwipe, hanging: hangingProp = false }) {
           ← החלק את התמונה ימינה →
         </p>
       )}
-
-      {/* Pendulum sway. The translate keeps the pig centered visually around
-          the rest pose (-90° around BR). */}
-      <style>{`
-        @keyframes pigSway {
-          0%, 100% { transform: rotate(${COMMIT_DEG - 6}deg); }
-          50%      { transform: rotate(${COMMIT_DEG + 6}deg); }
-        }
-      `}</style>
     </div>
   );
 }
