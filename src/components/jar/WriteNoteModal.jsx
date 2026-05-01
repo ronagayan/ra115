@@ -3,10 +3,11 @@ import imageToBase64 from '../../lib/imageToBase64';
 
 const EMOJIS = ['💚','❤️','✨','🌸','🥰','😊','🌙','⭐','🎉','🫂','💫','🌿'];
 
-export default function WriteNoteModal({ onClose, onSubmit }) {
-  const [text, setText] = useState('');
-  const [emoji, setEmoji] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+export default function WriteNoteModal({ onClose, onSubmit, initial }) {
+  const isEdit = !!initial;
+  const [text, setText] = useState(initial?.text || '');
+  const [emoji, setEmoji] = useState(initial?.emoji || '');
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl || '');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
@@ -60,7 +61,9 @@ export default function WriteNoteModal({ onClose, onSubmit }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl text-text-primary">כתוב פתק 💚</h2>
+          <h2 className="font-display text-xl text-text-primary">
+            {isEdit ? 'ערוך פתק ✎' : 'כתוב פתק 💚'}
+          </h2>
           <button onClick={onClose} className="text-muted hover:text-highlight text-xl">✕</button>
         </div>
 
@@ -134,7 +137,7 @@ export default function WriteNoteModal({ onClose, onSubmit }) {
           disabled={!text.trim() || saving}
           className="clay-primary w-full py-3.5 font-body font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {saving ? 'שומר...' : 'שלח 💚'}
+          {saving ? 'שומר...' : isEdit ? 'עדכן ✓' : 'שלח 💚'}
         </button>
       </div>
     </div>

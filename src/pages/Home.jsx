@@ -9,11 +9,33 @@ import useNotes from '../hooks/useNotes';
 import useNotifications from '../hooks/useNotifications';
 
 export default function Home({ user }) {
-  const { unpulled, history, pullRandomNote, addNote } = useNotes(user);
-  const [showWrite, setShowWrite] = useState(false);
+  const {
+    unpulled, history, myNotes,
+    pullRandomNote, addNote, updateNote, deleteNote,
+  } = useNotes(user);
+
+  const [writeModal, setWriteModal] = useState(null); // null | { mode: 'new' | 'edit', note? }
   const [showHistory, setShowHistory] = useState(false);
 
   useNotifications(user);
+
+  function openWrite() {
+    setWriteModal({ mode: 'new' });
+  }
+  function openEdit(note) {
+    setWriteModal({ mode: 'edit', note });
+  }
+  function closeModal() {
+    setWriteModal(null);
+  }
+
+  async function handleSubmit(payload) {
+    if (writeModal?.mode === 'edit') {
+      await updateNote(writeModal.note.id, payload);
+    } else {
+      await addNote(payload);
+    }
+  }
 
   return (
     <div
@@ -26,7 +48,6 @@ export default function Home({ user }) {
           'linear-gradient(180deg, #0d1f16 0%, #1a3a2a 100%)',
       }}
     >
-      {/* Subtle paper grain over the whole page */}
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.06] mix-blend-overlay"
         style={{
@@ -35,8 +56,7 @@ export default function Home({ user }) {
         }}
       />
 
-      <div className="relative z-10 flex flex-col flex-1 pb-[140px]">
-        {/* Header */}
+      <div className="relative z-10 flex flex-col flex-1 pb-[26vh]">
         <header className="flex items-center justify-between px-5 pt-6 pb-2">
           <div>
             <h1 className="font-display text-2xl text-text-primary leading-none">💚</h1>
@@ -52,7 +72,6 @@ export default function Home({ user }) {
           </Link>
         </header>
 
-        {/* Day counter */}
         <section className="px-5 animate-fadeInUp">
           <DayCounter />
           <p className="text-center text-muted text-[10px] tracking-[0.4em] uppercase -mt-2 font-body">
@@ -60,7 +79,6 @@ export default function Home({ user }) {
           </p>
         </section>
 
-        {/* Cork board — photos + history of pulled notes */}
         <section
           className="mt-5 mb-2 animate-fadeInUp stagger-1 opacity-0-init"
           style={{ animationFillMode: 'forwards' }}
@@ -68,7 +86,13 @@ export default function Home({ user }) {
           <h2 className="px-5 mb-2 font-display text-text-primary text-sm tracking-[0.25em] uppercase opacity-70">
             הלוח שלנו
           </h2>
-          <CorkBoard history={history} />
+          <CorkBoard
+            history={history}
+            myNotes={myNotes}
+            user={user}
+            onEditNote={openEdit}
+            onDeleteNote={(note) => deleteNote(note.id)}
+          />
         </section>
 
         <div className="flex-1" />
@@ -80,18 +104,18 @@ export default function Home({ user }) {
         </footer>
       </div>
 
-      {/* Bottom drawer — peeks into view, drag up to open */}
       <JarSheet
         unpulled={unpulled}
         onPull={pullRandomNote}
-        onWrite={() => setShowWrite(true)}
+        onWrite={openWrite}
         onHistory={() => setShowHistory(true)}
       />
 
-      {showWrite && (
+      {writeModal && (
         <WriteNoteModal
-          onClose={() => setShowWrite(false)}
-          onSubmit={addNote}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+          initial={writeModal.mode === 'edit' ? writeModal.note : null}
         />
       )}
       {showHistory && (

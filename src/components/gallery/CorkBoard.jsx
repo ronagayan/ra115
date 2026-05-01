@@ -41,17 +41,22 @@ function PolaroidItem({ item, idx, onOpen }) {
         }}
       >
         <div
-          className="w-full"
+          className="w-full relative overflow-hidden"
           style={{
             aspectRatio: '4 / 5',
-            background: item.src
-              ? `url(${item.src}) center/cover`
-              : 'linear-gradient(135deg,#3a4f3e 0%,#1f2e25 100%)',
-            position: 'relative',
-            overflow: 'hidden',
+            background: 'linear-gradient(135deg,#3a4f3e 0%,#1f2e25 100%)',
           }}
         >
-          {!item.src && (
+          {item.src ? (
+            <img
+              src={item.src}
+              alt={item.caption || ''}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
             <div className="absolute inset-0 flex items-center justify-center text-white/30 text-xl">📷</div>
           )}
           {item.src && (
@@ -74,10 +79,9 @@ function PolaroidItem({ item, idx, onOpen }) {
   );
 }
 
-function NoteItem({ item, idx, onOpen }) {
+function NoteItem({ item, idx, onOpen, mine }) {
   const pin = PIN_COLORS[idx % PIN_COLORS.length];
   const rot = jitter(idx + 0.5, -8, 8);
-  // Alternate paper hues so adjacent notes don't blend
   const hues = [
     'linear-gradient(168deg,#fbf3da 0%,#f0e3b8 100%)',
     'linear-gradient(168deg,#dee9d2 0%,#bbd0a4 100%)',
@@ -91,13 +95,12 @@ function NoteItem({ item, idx, onOpen }) {
       className="relative active:scale-[0.97] transition-transform"
       style={{ transform: `rotate(${rot.toFixed(2)}deg)`, cursor: 'zoom-in' }}
     >
-      {/* Pushpin */}
       <div
         className={`pushpin ${pin} absolute left-1/2 -translate-x-1/2 z-20`}
         style={{ top: -6 }}
       />
       <div
-        className="px-3 py-3 paper-grain"
+        className="px-3 py-3 paper-grain relative"
         style={{
           width: 124,
           minHeight: 90,
@@ -108,13 +111,27 @@ function NoteItem({ item, idx, onOpen }) {
           borderRadius: 2,
         }}
       >
+        {mine && (
+          <div
+            className="absolute -top-2 -left-2 px-1.5 py-0.5 rounded text-[8px] tracking-[0.2em] uppercase font-semibold"
+            style={{ background: '#52b788', color: '#0d1f16' }}
+          >
+            שלי
+          </div>
+        )}
         {item.emoji && (
           <div className="text-center text-base mb-0.5" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.15))' }}>
             {item.emoji}
           </div>
         )}
         {item.imageUrl && (
-          <img src={item.imageUrl} alt="" className="w-full mb-1 max-h-20 object-cover rounded-sm" />
+          <img
+            src={item.imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="w-full mb-1 max-h-20 object-cover rounded-sm"
+          />
         )}
         <p
           className="text-[11px] leading-snug text-right line-clamp-3"
@@ -134,7 +151,13 @@ function NoteItem({ item, idx, onOpen }) {
   );
 }
 
-export default function CorkBoard({ history = [] }) {
+export default function CorkBoard({
+  history = [],
+  myNotes = [],
+  user,
+  onEditNote,
+  onDeleteNote,
+}) {
   const [open, setOpen] = useState(null);
   const scrollRef = useRef(null);
 
@@ -148,14 +171,42 @@ export default function CorkBoard({ history = [] }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  // Combine — newest items go to the right.
-  // Photos first (the immutable backdrop of memories), then history notes.
-  const items = [
-    ...PHOTOS.map((p) => ({ kind: 'photo', ...p })),
-    ...history.map((n) => ({ kind: 'note', ...n, id: n.id || n.text?.slice(0, 8) })),
+  // Mark which items are notes I authored.
+  // Use a Set of ids so dedup is cheap.
+  const myIds = new Set(myNotes.map((n) => n.id));
+
+  // Combine into a single timeline.
+  // Photos first (the immutable backdrop), then notes (history + myNotes
+  // merged). myNotes ALWAYS appear regardless of pulled-state.
+  const allNotes = [
+    ...history.map((n) => ({ ...n, _mine: myIds.has(n.id) || n.author === user })),
+    ...myNotes
+      .filter((n) => !myIds.has(n.id) || true) // keep all, will dedup below
+      .map((n) => ({ ...n, _mine: true })),
   ];
 
-  // Two-row staggered layout. Each item gets a column slot.
+  // Dedup by id (a note could in theory be in both lists)
+  const seen = new Set();
+  const uniqNotes = allNotes.filter((n) => {
+    if (!n.id) return true;
+    if (seen.has(n.id)) return false;
+    seen.add(n.id);
+    return true;
+  });
+
+  // Sort notes by createdAt desc (newest at right end)
+  uniqNotes.sort((a, b) => {
+    const ta = a.createdAt?.seconds ?? a.createdAt ?? 0;
+    const tb = b.createdAt?.seconds ?? b.createdAt ?? 0;
+    return ta - tb;
+  });
+
+  const items = [
+    ...PHOTOS.map((p) => ({ kind: 'photo', ...p })),
+    ...uniqNotes.map((n) => ({ kind: 'note', ...n })),
+  ];
+
+  // Two-row staggered layout.
   const COL_WIDTH = 110;
   const ROW_HEIGHT = 170;
   const PAD_LEFT = 28;
@@ -163,7 +214,7 @@ export default function CorkBoard({ history = [] }) {
 
   const decorated = items.map((item, i) => {
     const col = i;
-    const row = i % 2; // alternate top/bottom row
+    const row = i % 2;
     const xJitter = jitter(i, -14, 14);
     const yJitter = jitter(i + 0.7, -22, 22);
     return {
@@ -177,7 +228,7 @@ export default function CorkBoard({ history = [] }) {
   const totalWidth = Math.max(decorated.length, 4) * COL_WIDTH + PAD_LEFT * 2 + 60;
   const boardHeight = ROW_HEIGHT * 2 + PAD_TOP * 2;
 
-  // Auto-scroll to the right when new items are added.
+  // Auto-scroll right on new items.
   const lastCount = useRef(items.length);
   useEffect(() => {
     if (items.length > lastCount.current && scrollRef.current) {
@@ -186,9 +237,18 @@ export default function CorkBoard({ history = [] }) {
     lastCount.current = items.length;
   }, [items.length]);
 
+  function handleEdit(note) {
+    setOpen(null);
+    onEditNote?.(note);
+  }
+  async function handleDelete(note) {
+    if (!confirm('למחוק את הפתק?')) return;
+    setOpen(null);
+    await onDeleteNote?.(note);
+  }
+
   return (
     <div className="px-3">
-      {/* Wood-framed cork board */}
       <div className="wood-frame rounded-[14px] p-3" style={{ boxShadow: '0 20px 40px -10px rgba(0,0,0,0.5)' }}>
         <div
           ref={scrollRef}
@@ -211,7 +271,7 @@ export default function CorkBoard({ history = [] }) {
                   className="absolute"
                   style={{ left: item._x, top: item._y, transformOrigin: 'center' }}
                 >
-                  <NoteItem item={item} idx={item._idx} onOpen={setOpen} />
+                  <NoteItem item={item} idx={item._idx} onOpen={setOpen} mine={!!item._mine} />
                 </div>
               )
             )}
@@ -240,12 +300,9 @@ export default function CorkBoard({ history = [] }) {
           role="dialog"
           aria-modal="true"
         >
-          {/* Hint above */}
           <div className="absolute top-6 left-1/2 -translate-x-1/2 text-muted/70 text-[11px] font-body tracking-[0.3em] uppercase pointer-events-none">
-            הקש מחוץ לתמונה לסגירה
+            הקש מחוץ לסגירה
           </div>
-
-          {/* Close button — visible & always reachable */}
           <button
             onClick={(e) => { e.stopPropagation(); setOpen(null); }}
             className="clay-soft absolute top-6 right-6 w-11 h-11 flex items-center justify-center text-text-primary text-lg z-10"
@@ -264,9 +321,10 @@ export default function CorkBoard({ history = [] }) {
                 className="bg-[#fbf3da] p-3 pb-10"
                 style={{ boxShadow: '0 30px 60px -15px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.45)' }}
               >
-                {open.src && <img src={open.src} alt={open.caption} className="w-full" />}
-                {!open.src && (
-                  <div className="w-full aspectRatio-[4/5] flex items-center justify-center text-white/30" style={{ aspectRatio: '4/5', background: 'linear-gradient(135deg,#3a4f3e,#1f2e25)' }}>📷</div>
+                {open.src ? (
+                  <img src={open.src} alt={open.caption} loading="eager" className="w-full" />
+                ) : (
+                  <div className="w-full flex items-center justify-center text-white/30" style={{ aspectRatio: '4/5', background: 'linear-gradient(135deg,#3a4f3e,#1f2e25)' }}>📷</div>
                 )}
                 {open.caption && (
                   <div className="mt-3 text-center text-[#3a2a14]" style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic' }}>
@@ -276,7 +334,7 @@ export default function CorkBoard({ history = [] }) {
               </div>
             ) : (
               <div
-                className="px-7 py-8 paper-grain"
+                className="px-7 py-8 paper-grain relative"
                 style={{
                   background: 'linear-gradient(168deg,#fbf3da 0%,#f0e3b8 50%,#e7d8a4 100%)',
                   color: '#3a2a14',
@@ -284,7 +342,7 @@ export default function CorkBoard({ history = [] }) {
                 }}
               >
                 {open.emoji && <div className="text-4xl text-center mb-3">{open.emoji}</div>}
-                {open.imageUrl && <img src={open.imageUrl} alt="" className="w-full rounded-sm mb-4 max-h-56 object-cover" />}
+                {open.imageUrl && <img src={open.imageUrl} alt="" loading="eager" className="w-full rounded-sm mb-4 max-h-72 object-cover" />}
                 <p
                   className="text-center whitespace-pre-wrap leading-relaxed"
                   style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic', fontSize: '1.15rem' }}
@@ -292,6 +350,27 @@ export default function CorkBoard({ history = [] }) {
                 >
                   {open.text}
                 </p>
+
+                {open._mine && (onEditNote || onDeleteNote) && (
+                  <div className="mt-6 flex gap-3 justify-center">
+                    {onEditNote && (
+                      <button
+                        onClick={() => handleEdit(open)}
+                        className="clay-soft px-4 py-2 text-sm font-body text-text-primary"
+                      >
+                        ✎ ערוך
+                      </button>
+                    )}
+                    {onDeleteNote && (
+                      <button
+                        onClick={() => handleDelete(open)}
+                        className="clay-gold px-4 py-2 text-sm font-body font-semibold"
+                      >
+                        🗑 מחק
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

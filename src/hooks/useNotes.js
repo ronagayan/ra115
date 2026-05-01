@@ -1,43 +1,70 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, doc, addDoc, updateDoc, query,
+  collection, doc, addDoc, updateDoc, deleteDoc, query,
   orderBy, onSnapshot, serverTimestamp,
 } from 'firebase/firestore';
 import { db, isLocal } from '../firebase';
 import * as local from '../lib/localStore';
 
+// her_notes = notes written BY him (read by her)
+// him_notes = notes written BY her (read by him)
+const incomingFor = (user) => (user === 'her' ? 'her_notes' : 'him_notes');
+const outgoingFor = (user) => (user === 'her' ? 'him_notes' : 'her_notes');
+
 export default function useNotes(user) {
-  // her sees her_notes (written by him), him sees him_notes (written by her)
-  const collectionName = user === 'her' ? 'her_notes' : 'him_notes';
-  const [notes, setNotes] = useState([]);
+  const incomingColl = incomingFor(user);
+  const outgoingColl = outgoingFor(user);
+
+  // Notes I've received (from the other side)
+  const [incoming, setIncoming] = useState([]);
+  // Notes I've sent (to the other side) — I can edit/delete these
+  const [outgoing, setOutgoing] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
 
     if (isLocal) {
-      const unsub = local.subscribe(`notes:${collectionName}`, (val) => {
-        setNotes(val || []);
+      const u1 = local.subscribe(`notes:${incomingColl}`, (v) => {
+        setIncoming(v || []);
         setLoading(false);
       });
-      return unsub;
+      const u2 = local.subscribe(`notes:${outgoingColl}`, (v) => setOutgoing(v || []));
+      return () => { u1(); u2(); };
     }
 
-    const q = query(
-      collection(db, 'notes', collectionName, 'items'),
+    const qIn = query(
+      collection(db, 'notes', incomingColl, 'items'),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setNotes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const qOut = query(
+      collection(db, 'notes', outgoingColl, 'items'),
+      orderBy('createdAt', 'desc')
+    );
+    const u1 = onSnapshot(qIn, (snap) => {
+      setIncoming(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
-    return unsub;
-  }, [user, collectionName]);
+    const u2 = onSnapshot(qOut, (snap) => {
+      setOutgoing(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => { u1(); u2(); };
+  }, [user, incomingColl, outgoingColl]);
 
-  const unpulled = notes.filter((n) => !n.pulled);
-  const history = notes
+  // Backwards-compatible helpers
+  const unpulled = incoming.filter((n) => !n.pulled);
+  const history = incoming
     .filter((n) => n.pulled)
-    .sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+    .sort((a, b) =>
+      (b.createdAt?.seconds || b.createdAt || 0) -
+      (a.createdAt?.seconds || a.createdAt || 0)
+    );
+  const myNotes = outgoing
+    .slice()
+    .sort((a, b) =>
+      (b.createdAt?.seconds || b.createdAt || 0) -
+      (a.createdAt?.seconds || a.createdAt || 0)
+    );
 
   async function pullRandomNote() {
     if (unpulled.length === 0) return null;
@@ -45,40 +72,62 @@ export default function useNotes(user) {
     const note = unpulled[idx];
 
     if (isLocal) {
-      local.patchItem(`notes:${collectionName}`, note.id, { pulled: true });
+      local.patchItem(`notes:${incomingColl}`, note.id, { pulled: true });
       return note;
     }
-
-    await updateDoc(
-      doc(db, 'notes', collectionName, 'items', note.id),
-      { pulled: true }
-    );
+    await updateDoc(doc(db, 'notes', incomingColl, 'items', note.id), { pulled: true });
     return note;
   }
 
   async function addNote({ text, emoji, imageUrl }) {
-    // writer is the opposite user — note lands in the other's pile
-    const targetCollection = user === 'her' ? 'him_notes' : 'her_notes';
-
     if (isLocal) {
-      local.push(`notes:${targetCollection}`, {
+      local.push(`notes:${outgoingColl}`, {
         text,
         emoji: emoji || null,
         imageUrl: imageUrl || null,
+        author: user,
         createdAt: Date.now() / 1000,
         pulled: false,
       });
       return;
     }
-
-    await addDoc(collection(db, 'notes', targetCollection, 'items'), {
+    await addDoc(collection(db, 'notes', outgoingColl, 'items'), {
       text,
       emoji: emoji || null,
       imageUrl: imageUrl || null,
+      author: user,
       createdAt: serverTimestamp(),
       pulled: false,
     });
   }
 
-  return { notes, unpulled, history, loading, pullRandomNote, addNote };
+  // Edit/delete only work on outgoing notes (the ones I authored).
+  async function updateNote(noteId, patch) {
+    if (isLocal) {
+      local.patchItem(`notes:${outgoingColl}`, noteId, patch);
+      return;
+    }
+    await updateDoc(doc(db, 'notes', outgoingColl, 'items', noteId), patch);
+  }
+
+  async function deleteNote(noteId) {
+    if (isLocal) {
+      const list = local.get(`notes:${outgoingColl}`) || [];
+      local.set(`notes:${outgoingColl}`, list.filter((n) => n.id !== noteId));
+      return;
+    }
+    await deleteDoc(doc(db, 'notes', outgoingColl, 'items', noteId));
+  }
+
+  return {
+    notes: incoming, // backwards-compat
+    unpulled,
+    history,
+    myNotes,
+    loading,
+    pullRandomNote,
+    addNote,
+    updateNote,
+    deleteNote,
+  };
 }

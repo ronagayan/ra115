@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import Jar from './Jar';
 
-// Bottom-anchored "drawer" version of the jar. Closed: only the brass lid
-// shows at the bottom edge of the screen. Drag up or tap → slides up to
-// reveal the full jar + write/pull actions.
+// Bottom-anchored jar. Closed: bottom 25vh of the viewport shows the
+// TOP of the jar (lid + neck + upper body) rising out of the bottom of the
+// screen. Drag up or tap → expands to a fully-visible open state with the
+// full jar + a "write note" CTA.
 
-const PEEK = 110;        // px of sheet visible when closed
-const SHEET_HEIGHT = 580; // total sheet height when open
-const THRESHOLD = 40;    // drag distance to commit open/close
+const PEEK_VH = 25;            // % of viewport height when closed
+const OPEN_HEIGHT_PX = 560;    // px when fully open (jar + CTA + padding)
+const THRESHOLD = 40;          // drag distance to commit open/close
 
 export default function JarSheet({ unpulled, onPull, onWrite, onHistory }) {
   const [open, setOpen] = useState(false);
-  const [dragY, setDragY] = useState(null); // null when not dragging
+  const [dragY, setDragY] = useState(null);
   const startYRef = useRef(null);
 
-  // Close on Esc when open
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
@@ -37,28 +37,33 @@ export default function JarSheet({ unpulled, onPull, onWrite, onHistory }) {
   function onPointerUp(e) {
     e.currentTarget.releasePointerCapture?.(e.pointerId);
     if (startYRef.current === null) return;
-    const dy = (e.clientY - startYRef.current);
+    const dy = e.clientY - startYRef.current;
     startYRef.current = null;
     setDragY(null);
 
     if (!open && dy < -THRESHOLD) setOpen(true);
     else if (open && dy > THRESHOLD) setOpen(false);
-    else if (!open && Math.abs(dy) < 6) {
-      // Tap on the lid → open
-      setOpen(true);
-    }
+    else if (!open && Math.abs(dy) < 6) setOpen(true); // tap to open
   }
 
-  // Compute translate
-  const baseClosed = SHEET_HEIGHT - PEEK;
-  let translate = open ? 0 : baseClosed;
+  // Effective height. While dragging, smoothly interpolate.
+  let style;
+  if (open) {
+    style = { height: `${OPEN_HEIGHT_PX}px` };
+  } else {
+    style = { height: `${PEEK_VH}vh` };
+  }
+  // While actively dragging, override with a live preview height
   if (dragY !== null) {
-    translate = Math.max(0, Math.min(baseClosed, translate + dragY));
+    const baseH = open ? OPEN_HEIGHT_PX : window.innerHeight * (PEEK_VH / 100);
+    const liveH = Math.max(window.innerHeight * (PEEK_VH / 100),
+                           Math.min(OPEN_HEIGHT_PX, baseH - dragY));
+    style = { height: `${liveH}px` };
   }
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop dim — only when fully open */}
       <div
         onClick={() => setOpen(false)}
         aria-hidden="true"
@@ -72,77 +77,78 @@ export default function JarSheet({ unpulled, onPull, onWrite, onHistory }) {
         }}
       />
 
-      {/* Sheet */}
+      {/* The sheet */}
       <section
-        className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center select-none"
+        className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center select-none overflow-hidden"
         style={{
-          height: SHEET_HEIGHT,
-          transform: `translateY(${translate}px)`,
+          ...style,
           transition: dragY !== null
             ? 'none'
-            : 'transform 480ms cubic-bezier(.34,1.4,.5,1)',
-          willChange: 'transform',
+            : 'height 480ms cubic-bezier(.34,1.4,.5,1)',
+          willChange: 'height',
           touchAction: 'none',
-          // Wooden shelf as the sheet's background
           background:
             'linear-gradient(180deg,' +
-            'rgba(13,31,22,0.0) 0%,' +
-            'rgba(13,31,22,0.6) 14%,' +
-            '#1a3a2a 22%,' +
-            '#162e22 100%)',
-          boxShadow: open ? '0 -20px 50px -10px rgba(0,0,0,0.6)' : 'none',
+            'rgba(13,31,22,0) 0%,' +
+            'rgba(13,31,22,0.55) 8%,' +
+            '#1a3a2a 18%,' +
+            '#0f2418 100%)',
+          boxShadow: open ? '0 -25px 60px -10px rgba(0,0,0,0.7)' : '0 -10px 24px -8px rgba(0,0,0,0.5)',
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
         }}
       >
-        {/* Drag handle area + hint */}
+        {/* Drag handle row — fixed at top of sheet */}
         <div
-          className="w-full flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+          className="w-full flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing flex-shrink-0"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {/* Pill */}
           <div
             className="w-12 h-1.5 rounded-full"
             style={{
-              background: 'rgba(216,243,220,0.4)',
+              background: 'rgba(216,243,220,0.45)',
               boxShadow: '0 1px 0 rgba(0,0,0,0.4)',
             }}
           />
           {!open && (
-            <p className="text-muted text-[11px] font-body italic mt-2 tracking-wider animate-pulse">
-              ↑ משוך לפתיחת הצנצנת ↑
+            <p className="text-muted text-[11px] font-body italic mt-1.5 tracking-wider animate-pulse">
+              ↑ משוך לפתיחה ↑
             </p>
           )}
         </div>
 
-        {/* Wood shelf line */}
+        {/* Wood shelf — visible at the top edge */}
         <div
-          className="w-full h-2"
+          className="w-full h-2 flex-shrink-0"
           style={{
             background: 'linear-gradient(180deg,#5a3a1a 0%,#3a2510 50%,#1f1408 100%)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
           }}
         />
 
-        {/* Jar + actions */}
-        <div className="flex-1 flex flex-col items-center justify-center pt-6 pb-8 gap-4 w-full">
+        {/* Jar — anchored to the top of the sheet so the LID is what shows
+            during peek, and the body grows into view as the sheet opens. */}
+        <div className="w-full flex flex-col items-center pt-4 flex-shrink-0">
           <Jar
             unpulled={unpulled}
             onPull={onPull}
             onWrite={onWrite}
             onHistory={onHistory}
           />
+        </div>
 
-          {/* Add-note prompt when fully open */}
-          {open && (
-            <button
-              onClick={onWrite}
-              className="clay-primary mt-2 px-7 py-3.5 font-body font-semibold text-base animate-fadeInUp"
-            >
-              ✦ כתוב פתק חדש
-            </button>
-          )}
+        {/* CTA — only visible when fully open (it lives in the lower portion
+            of the sheet that's hidden during peek). */}
+        <div className="flex flex-col items-center gap-3 pt-4 pb-6 flex-shrink-0">
+          <button
+            onClick={onWrite}
+            className="clay-primary px-7 py-3.5 font-body font-semibold text-base"
+          >
+            ✦ כתוב פתק חדש
+          </button>
         </div>
 
         {/* Close button (only when open) */}
