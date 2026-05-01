@@ -41,3 +41,5 @@ firebase-debug.*.log
 
 # Claude / agent metadata
 .claude/scheduled_tasks.lock
+
+.vercel

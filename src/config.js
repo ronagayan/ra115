@@ -1,17 +1,20 @@
 export const ANNIVERSARY_DATE = new Date('2023-05-11'); // ← תאריך אמיתי!
 
 export const TOKENS = {
-  her: 'REPLACE_WITH_RANDOM_STRING_1', // ← לינק לעמית
-  him: 'REPLACE_WITH_RANDOM_STRING_2', // ← לינק שלך
+  her: 'amit-2y-green-jar', // ← לינק לעמית
+  him: 'rona-2y-green-jar', // ← לינק שלך
 };
 
 export const firebaseConfig = {
-  apiKey: 'REPLACE_WITH_API_KEY',
-  authDomain: 'REPLACE_WITH_AUTH_DOMAIN',
-  projectId: 'REPLACE_WITH_PROJECT_ID',
-  storageBucket: 'REPLACE_WITH_STORAGE_BUCKET',
-  messagingSenderId: 'REPLACE_WITH_SENDER_ID',
-  appId: 'REPLACE_WITH_APP_ID',
+  apiKey: 'AIzaSyDKMtM9gsoxPtCmmP37_1v38yzzjhRXtgM',
+  authDomain: 'ra115-a013e.firebaseapp.com',
+  projectId: 'ra115-a013e',
+  storageBucket: 'ra115-a013e.firebasestorage.app',
+  messagingSenderId: '939753877070',
+  appId: '1:939753877070:web:7da9bb4ca5f752cf2b1d1f',
+  measurementId: 'G-6WXZ866LVD',
 };
 
+// Optional — for FCM push notifications.
+// Generate at Firebase Console → Project Settings → Cloud Messaging → Web push certificates
 export const VAPID_KEY = 'REPLACE_WITH_VAPID_KEY';
