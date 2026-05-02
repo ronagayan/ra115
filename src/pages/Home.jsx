@@ -117,9 +117,11 @@ export default function Home({ user }) {
       </div>
 
       <JarSheet
+        user={user}
         unpulled={unpulled}
         onPull={pullNote}
         onWrite={openWrite}
+        onUpdateWordle={handleUpdateWordle}
       />
 
       {writeModal && (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import WordleAttachment from './WordleAttachment';
 
 // Bottom-anchored full-width jar. The JAR itself is the draggable element
 // — there is no separate drawer/handle chrome.
@@ -19,7 +20,7 @@ const FULL_HEIGHT_VH = 90;
 const TWIST_THRESHOLD_DEG = 270; // ¾ of a turn to commit
 const PIXELS_PER_DEG = 2;        // horizontal swipe → degrees of rotation
 
-export default function JarSheet({ unpulled, onPull, onWrite }) {
+export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, user }) {
   const [open, setOpen] = useState(false);
   const [lidGone, setLidGone] = useState(false);
   const [lid, setLid] = useState({ rot: 0, ty: 0, vy: 0 });
@@ -134,6 +135,13 @@ export default function JarSheet({ unpulled, onPull, onWrite }) {
     setReadingNote(null);
   }
 
+  // Live-updated version of the note being read — wordle.guesses change
+  // when the recipient submits a guess, so we need to pull the latest
+  // copy from `unpulled` (which is a Firestore subscription).
+  const liveReading = readingNote
+    ? unpulled.find((n) => n.id === readingNote.id) || readingNote
+    : null;
+
   // Twist progress hint
   const twistProgress = Math.min(Math.abs(lid.rot) / TWIST_THRESHOLD_DEG, 1);
 
@@ -206,9 +214,9 @@ export default function JarSheet({ unpulled, onPull, onWrite }) {
       </section>
 
       {/* Read-note lightbox */}
-      {readingNote && (
+      {liveReading && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-6 overflow-y-auto"
           style={{ background: 'rgba(13,31,22,0.85)', backdropFilter: 'blur(12px)' }}
           onClick={dismissReadNote}
           role="dialog"
@@ -216,13 +224,13 @@ export default function JarSheet({ unpulled, onPull, onWrite }) {
         >
           <button
             onClick={(e) => { e.stopPropagation(); dismissReadNote(); }}
-            className="clay-soft absolute top-6 right-6 w-11 h-11 flex items-center justify-center text-text-primary text-lg z-10"
+            className="clay-soft fixed top-6 right-6 w-11 h-11 flex items-center justify-center text-text-primary text-lg z-[70]"
             aria-label="סגור"
           >
             ✕
           </button>
           <div
-            className="max-w-md w-full animate-fadeInUp"
+            className="max-w-md w-full animate-fadeInUp my-12"
             style={{ transform: 'rotate(-1.6deg)' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -234,10 +242,10 @@ export default function JarSheet({ unpulled, onPull, onWrite }) {
                 boxShadow: '0 30px 60px -15px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.45)',
               }}
             >
-              {readingNote.emoji && <div className="text-4xl text-center mb-3">{readingNote.emoji}</div>}
-              {readingNote.imageUrl && (
+              {liveReading.emoji && <div className="text-4xl text-center mb-3">{liveReading.emoji}</div>}
+              {liveReading.imageUrl && (
                 <img
-                  src={readingNote.imageUrl}
+                  src={liveReading.imageUrl}
                   alt=""
                   loading="eager"
                   className="w-full rounded-sm mb-4 max-h-72 object-cover"
@@ -252,8 +260,20 @@ export default function JarSheet({ unpulled, onPull, onWrite }) {
                 }}
                 dir="rtl"
               >
-                {readingNote.text}
+                {liveReading.text}
               </p>
+
+              {liveReading.wordle && (
+                <WordleAttachment
+                  wordle={liveReading.wordle}
+                  isAuthor={liveReading.author === user}
+                  onUpdateGuesses={async (newGuesses, solved) => {
+                    if (onUpdateWordle) {
+                      await onUpdateWordle(liveReading, newGuesses, solved);
+                    }
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -340,6 +360,14 @@ function WideJar({
               <div className="mt-1.5 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.55)', width: '70%' }} />
               <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.45)', width: '85%' }} />
               <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.40)', width: '55%' }} />
+              {note.wordle && (
+                <div
+                  className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[8px] rounded-full"
+                  style={{ background: '#f4a261', color: '#3a1f08' }}
+                >
+                  🟩
+                </div>
+              )}
             </button>
           );
         })}

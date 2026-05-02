@@ -86,25 +86,26 @@ export default function useNotes(user) {
     return note;
   }
 
-  async function addNote({ text, emoji, imageUrl }) {
-    if (isLocal) {
-      local.push(`notes:${outgoingColl}`, {
-        text,
-        emoji: emoji || null,
-        imageUrl: imageUrl || null,
-        author: user,
-        createdAt: Date.now() / 1000,
-        pulled: false,
-      });
-      return;
-    }
-    await addDoc(collection(db, 'notes', outgoingColl, 'items'), {
+  async function addNote({ text, emoji, imageUrl, wordle }) {
+    const base = {
       text,
       emoji: emoji || null,
       imageUrl: imageUrl || null,
       author: user,
-      createdAt: serverTimestamp(),
       pulled: false,
+    };
+    // Only attach a wordle field when one is actually configured — never
+    // store an empty/null wordle, which would render an interactable-but-
+    // broken attachment on the recipient's cork board.
+    if (wordle && wordle.word) base.wordle = wordle;
+
+    if (isLocal) {
+      local.push(`notes:${outgoingColl}`, { ...base, createdAt: Date.now() / 1000 });
+      return;
+    }
+    await addDoc(collection(db, 'notes', outgoingColl, 'items'), {
+      ...base,
+      createdAt: serverTimestamp(),
     });
   }
 
