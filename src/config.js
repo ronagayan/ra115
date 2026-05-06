@@ -1,4 +1,4 @@
-export const ANNIVERSARY_DATE = new Date('2023-05-11'); // ← תאריך אמיתי!
+export const ANNIVERSARY_DATE = new Date('2024-05-11'); // ← תאריך אמיתי!
 
 export const TOKENS = {
   her: 'amit-2y-green-jar', // ← לינק לעמית

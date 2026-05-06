@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import JarSheet from '../components/jar/JarSheet';
 import WriteNoteModal from '../components/jar/WriteNoteModal';
 import NoteHistory from '../components/jar/NoteHistory';
@@ -17,8 +17,15 @@ export default function Home({ user }) {
 
   const [writeModal, setWriteModal] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const navigate = useNavigate();
 
   const { permission, request: requestPushPermission } = useNotifications(user);
+
+  // Secret toggle: 5 quick taps on the day counter swap her ↔ him.
+  function handleSecretSwitch() {
+    const other = user === 'her' ? 'him' : 'her';
+    navigate(`/${other}${window.location.search}`);
+  }
 
   function openWrite() {
     setWriteModal({ mode: 'new' });
@@ -100,7 +107,7 @@ export default function Home({ user }) {
         )}
 
         <section className="px-5 animate-fadeInUp">
-          <DayCounter />
+          <DayCounter onSecretTap={handleSecretSwitch} />
           <p className="text-center text-muted text-[10px] tracking-[0.4em] uppercase -mt-2 font-body">
             ימים יחד
           </p>
