@@ -27,12 +27,8 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
   const [lid, setLid] = useState({ rot: 0, ty: 0, vy: 0 });
   const [readingNote, setReadingNote] = useState(null);
 
-  // Jar lift drag (peek → full)
-  const sheetDragRef = useRef({ startY: null });
+  // Live preview of sheet height while dragging up
   const [sheetDragY, setSheetDragY] = useState(null);
-
-  // Lid twist drag
-  const lidDragRef = useRef({ active: false, startX: 0, lastDx: 0 });
 
   useEffect(() => {
     function onKey(e) {
@@ -61,56 +57,92 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     return () => cancelAnimationFrame(raf);
   }, [lidGone]);
 
-  // — Sheet drag: works from anywhere on the jar in peek state —
-  function sheetPointerDown(e) {
-    if (open) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    sheetDragRef.current.startY = e.clientY;
-    setSheetDragY(0);
-  }
-  function sheetPointerMove(e) {
-    if (sheetDragRef.current.startY === null) return;
-    setSheetDragY(e.clientY - sheetDragRef.current.startY);
-  }
-  function sheetPointerUp(e) {
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
-    if (sheetDragRef.current.startY === null) return;
-    const dy = e.clientY - sheetDragRef.current.startY;
-    sheetDragRef.current.startY = null;
-    setSheetDragY(null);
-    if (dy < -40 || Math.abs(dy) < 6) setOpen(true);
+  // ONE unified pointer handler at the section level — fixes mobile because
+  // setPointerCapture fires once on the section (the captured element won't
+  // change) and 3D rotateY on the lid no longer affects hit testing.
+  //
+  // gesture mode is decided at pointerdown:
+  //   - !open                   → "lift" (drag up to open the jar)
+  //   - open && started on lid  → "twist" (horizontal swipe rotates lid)
+  //   - open && elsewhere       → no-op (the open backdrop will dismiss)
+  const gestureRef = useRef({
+    mode: null, // 'lift' | 'twist'
+    startX: 0,
+    startY: 0,
+    lastDx: 0,
+    accDeg: 0,  // accumulated absolute degrees during twist
+  });
+
+  function startedOnLid(e) {
+    // The lid is the top ~70px of the jar (within the sheet section).
+    // We use bounding box of the section so the math is correct regardless
+    // of where the user touches.
+    const rect = e.currentTarget.getBoundingClientRect();
+    const yWithin = e.clientY - rect.top;
+    return yWithin < 80;
   }
 
-  // — Lid twist: only active when open —
-  function lidPointerDown(e) {
-    if (!open || lidGone) return;
+  function sectionPointerDown(e) {
+    if (lidGone) return;
     e.preventDefault();
-    e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    lidDragRef.current.active = true;
-    lidDragRef.current.startX = e.clientX;
-    lidDragRef.current.lastDx = 0;
-  }
-  function lidPointerMove(e) {
-    if (!lidDragRef.current.active) return;
-    e.stopPropagation();
-    const dx = e.clientX - lidDragRef.current.startX;
-    lidDragRef.current.lastDx = dx;
-    setLid((p) => ({ ...p, rot: dx / PIXELS_PER_DEG }));
-  }
-  function lidPointerUp(e) {
-    if (!lidDragRef.current.active) return;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
-    e.stopPropagation();
-    lidDragRef.current.active = false;
-    const totalDeg = Math.abs(lidDragRef.current.lastDx / PIXELS_PER_DEG);
-    if (totalDeg >= TWIST_THRESHOLD_DEG) {
-      setLid((p) => ({ ...p, vy: -8 }));
-      setLidGone(true);
+
+    if (!open) {
+      gestureRef.current = {
+        mode: 'lift',
+        startX: e.clientX,
+        startY: e.clientY,
+        lastDx: 0,
+        accDeg: 0,
+      };
+      setSheetDragY(0);
+    } else if (startedOnLid(e)) {
+      gestureRef.current = {
+        mode: 'twist',
+        startX: e.clientX,
+        startY: e.clientY,
+        lastDx: 0,
+        accDeg: 0,
+      };
     } else {
-      setLid({ rot: 0, ty: 0, vy: 0 });
+      gestureRef.current.mode = null;
     }
+  }
+
+  function sectionPointerMove(e) {
+    const g = gestureRef.current;
+    if (!g.mode) return;
+    if (g.mode === 'lift') {
+      setSheetDragY(e.clientY - g.startY);
+    } else if (g.mode === 'twist') {
+      const dx = e.clientX - g.startX;
+      g.lastDx = dx;
+      const newRot = dx / PIXELS_PER_DEG;
+      // Track accumulated absolute degrees so a back-and-forth gesture still
+      // "uses up" twist budget (more forgiving for mobile wiggles).
+      g.accDeg = Math.max(g.accDeg, Math.abs(newRot));
+      setLid((p) => ({ ...p, rot: newRot }));
+    }
+  }
+
+  function sectionPointerUp(e) {
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    const g = gestureRef.current;
+
+    if (g.mode === 'lift') {
+      const dy = e.clientY - g.startY;
+      setSheetDragY(null);
+      if (dy < -40 || Math.abs(dy) < 6) setOpen(true);
+    } else if (g.mode === 'twist') {
+      const totalDeg = Math.max(g.accDeg, Math.abs(g.lastDx / PIXELS_PER_DEG));
+      if (totalDeg >= TWIST_THRESHOLD_DEG) {
+        setLid((p) => ({ ...p, vy: -8 }));
+        setLidGone(true);
+      } else {
+        setLid({ rot: 0, ty: 0, vy: 0 });
+      }
+    }
+    gestureRef.current.mode = null;
   }
 
   // Sheet height
@@ -168,10 +200,10 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
           // Perspective so 3D rotations on the lid look like actual depth
           perspective: '900px',
         }}
-        onPointerDown={sheetPointerDown}
-        onPointerMove={sheetPointerMove}
-        onPointerUp={sheetPointerUp}
-        onPointerCancel={sheetPointerUp}
+        onPointerDown={sectionPointerDown}
+        onPointerMove={sectionPointerMove}
+        onPointerUp={sectionPointerUp}
+        onPointerCancel={sectionPointerUp}
       >
         <div className="relative w-full flex-1">
           <WideJar
@@ -179,9 +211,6 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
             lidGone={lidGone}
             lid={lid}
             twistProgress={twistProgress}
-            onLidPointerDown={lidPointerDown}
-            onLidPointerMove={lidPointerMove}
-            onLidPointerUp={lidPointerUp}
             onReadNote={handleReadNote}
             interactive={open}
           />
@@ -273,7 +302,6 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
 // ────────────────────────────────────────────────────────────────────────────
 function WideJar({
   notesToShow, lidGone, lid, twistProgress,
-  onLidPointerDown, onLidPointerMove, onLidPointerUp,
   onReadNote, interactive,
 }) {
   return (
@@ -332,11 +360,12 @@ function WideJar({
         )}
       </div>
 
-      {/* Lid — twists in 3D (rotateY around vertical axis = real screw cap
-          motion). Once committed, the lid free-falls. */}
+      {/* Lid — purely visual. ALL pointer handling lives on the parent
+          section so 3D rotateY can't break hit-testing once the cap
+          starts foreshortening. */}
       {!lidGone && (
         <div
-          className="absolute"
+          className="absolute pointer-events-none"
           style={{
             left: '8%',
             right: '8%',
@@ -350,12 +379,7 @@ function WideJar({
                 ? 'transform 220ms cubic-bezier(.34,1.56,.64,1)'
                 : 'none',
             cursor: interactive ? 'grab' : 'default',
-            touchAction: 'none',
           }}
-          onPointerDown={onLidPointerDown}
-          onPointerMove={onLidPointerMove}
-          onPointerUp={onLidPointerUp}
-          onPointerCancel={onLidPointerUp}
         >
           <div
             className="absolute"
