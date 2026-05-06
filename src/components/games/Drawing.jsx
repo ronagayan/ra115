@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import useGame from '../../hooks/useGame';
+import notifyOther from '../../lib/notify';
 
 const WORDS_LIST = ['חתול', 'כלב', 'בית', 'עץ', 'שמש', 'ים', 'הר', 'ציפור', 'דג', 'פרח'];
 
@@ -63,6 +64,11 @@ export default function Drawing({ user }) {
     const correct = guess.trim() === state?.word;
     await update({ guess: guess.trim(), guessCorrect: correct });
     setGuess('');
+    notifyOther(user, {
+      title: '🎨 ציור מהיר',
+      body: correct ? `ניחש נכון: ${state?.word}` : `ניחוש: ${guess.trim()}`,
+      url: `/${user === 'her' ? 'him' : 'her'}/games`,
+    });
   }
 
   async function handleStart() {
@@ -74,6 +80,11 @@ export default function Drawing({ user }) {
       guesser: user === 'her' ? 'him' : 'her',
       guess: null,
       guessCorrect: false,
+    });
+    notifyOther(user, {
+      title: '🎨 ציור מהיר',
+      body: 'יש לך משחק לנחש!',
+      url: `/${user === 'her' ? 'him' : 'her'}/games`,
     });
   }
 

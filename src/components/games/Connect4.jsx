@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import useGame from '../../hooks/useGame';
+import notifyOther from '../../lib/notify';
 
 const ROWS = 6;
 const COLS = 7;
@@ -62,6 +63,19 @@ export default function Connect4({ user }) {
       currentTurn: w ? user : nextTurn,
       winner: w || null,
     });
+    if (w) {
+      notifyOther(user, {
+        title: '🎮 4 בשורה',
+        body: 'המשחק הסתיים — בוא לראות',
+        url: `/${user === 'her' ? 'him' : 'her'}/games`,
+      });
+    } else {
+      notifyOther(user, {
+        title: '🎮 4 בשורה',
+        body: 'התור שלך!',
+        url: `/${user === 'her' ? 'him' : 'her'}/games`,
+      });
+    }
   }
 
   async function handleReset() {

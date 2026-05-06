@@ -27,6 +27,7 @@ const PIXELS_PER_DEG = 1;
 export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, user }) {
   const [open, setOpen] = useState(false);
   const [lidGone, setLidGone] = useState(false);
+  const [lidOffscreen, setLidOffscreen] = useState(false);
   const [lid, setLid] = useState({ rot: 0, ty: 0, vy: 0 });
   const [readingNote, setReadingNote] = useState(null);
 
@@ -44,21 +45,25 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     return () => window.removeEventListener('keydown', onKey);
   }, [open, readingNote]);
 
-  // Free-fall once committed. CRITICAL: stop the loop the moment the lid
-  // leaves the viewport — otherwise it ticks forever, flooding the
-  // component with 60fps re-renders that freeze the bouncing notes.
+  // Free-fall once committed. We let the lid fall well past the viewport
+  // (window.innerHeight + 400) before stopping AND unmounting it, so it
+  // truly disappears off the bottom of the screen instead of stopping at
+  // the edge of the jar.
   useEffect(() => {
-    if (!lidGone) return;
+    if (!lidGone || lidOffscreen) return;
     let raf;
     let alive = true;
     function tick() {
       if (!alive) return;
       setLid((p) => {
         const ny = p.ty + p.vy;
-        const off = ny > (typeof window !== 'undefined' ? window.innerHeight : 1000);
-        if (off) {
-          alive = false; // halt the loop on the next frame
-          return p;      // stop mutating once off-screen
+        const limit = (typeof window !== 'undefined' ? window.innerHeight : 1000) + 400;
+        if (ny > limit) {
+          alive = false;
+          // Schedule unmount after this frame so React doesn't re-render
+          // synchronously inside the updater.
+          queueMicrotask(() => setLidOffscreen(true));
+          return p;
         }
         return {
           rot: p.rot + 6,
@@ -73,7 +78,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
       alive = false;
       cancelAnimationFrame(raf);
     };
-  }, [lidGone]);
+  }, [lidGone, lidOffscreen]);
 
   // ONE unified pointer handler at the section level — fixes mobile because
   // setPointerCapture fires once on the section (the captured element won't
@@ -240,6 +245,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
           <WideJar
             notesToShow={notesToShow}
             lidGone={lidGone}
+            lidOffscreen={lidOffscreen}
             lid={lid}
             twistProgress={twistProgress}
             onReadNote={handleReadNote}
@@ -332,7 +338,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
 
 // ────────────────────────────────────────────────────────────────────────────
 function WideJar({
-  notesToShow, lidGone, lid, twistProgress,
+  notesToShow, lidGone, lidOffscreen, lid, twistProgress,
   onReadNote, interactive,
 }) {
   return (
@@ -496,7 +502,7 @@ function WideJar({
         </div>
       )}
 
-      {lidGone && (
+      {lidGone && !lidOffscreen && (
         <div
           className="absolute pointer-events-none"
           style={{
@@ -504,9 +510,6 @@ function WideJar({
             right: '8%',
             top: 0,
             height: 60,
-            // Once thrown, a normal planar tumble is fine — the user is no
-            // longer trying to twist, so size doesn't matter and a flat
-            // rotation reads as "lid falling and spinning away".
             transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
             zIndex: 60,
           }}

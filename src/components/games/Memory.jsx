@@ -1,4 +1,5 @@
 import useGame from '../../hooks/useGame';
+import notifyOther from '../../lib/notify';
 
 const EMOJIS = ['🐱', '🐶', '🐸', '🦊', '🐺', '🦁', '🐯', '🐻'];
 
@@ -41,6 +42,11 @@ export default function Memory({ user }) {
         await update({ flipped: newFlipped });
         setTimeout(async () => {
           await update({ flipped: [], currentTurn: user === 'her' ? 'him' : 'her' });
+          notifyOther(user, {
+            title: '🧠 זיכרון',
+            body: 'התור שלך!',
+            url: `/${user === 'her' ? 'him' : 'her'}/games`,
+          });
         }, 1000);
       }
     } else {

@@ -7,6 +7,7 @@ import CorkBoard from '../components/gallery/CorkBoard';
 import DayCounter from '../components/DayCounter';
 import useNotes from '../hooks/useNotes';
 import useNotifications from '../hooks/useNotifications';
+import notifyOther from '../lib/notify';
 
 export default function Home({ user }) {
   const {
@@ -17,7 +18,7 @@ export default function Home({ user }) {
   const [writeModal, setWriteModal] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  useNotifications(user);
+  const { permission, request: requestPushPermission } = useNotifications(user);
 
   function openWrite() {
     setWriteModal({ mode: 'new' });
@@ -45,6 +46,11 @@ export default function Home({ user }) {
       await updateNote(note.id, { wordle: newWordle });
     } else {
       await updateIncomingNote(note.id, { wordle: newWordle });
+      // Tell the author someone just guessed
+      notifyOther(user, {
+        title: '🟩 ניחוש wordle',
+        body: solved ? `נוחש ב-${newGuesses.length} ניסיונות!` : `${newGuesses.length} ניסיונות עד כה`,
+      });
     }
   }
 
@@ -82,6 +88,16 @@ export default function Home({ user }) {
             🎮 משחקים
           </Link>
         </header>
+
+        {/* Push-notifications opt-in banner */}
+        {permission === 'default' && (
+          <button
+            onClick={requestPushPermission}
+            className="mx-5 mt-2 mb-1 clay-soft px-4 py-2 text-xs font-body text-muted text-center"
+          >
+            🔔 הפעלי התראות כדי לדעת מתי יש פתק חדש או שתורך במשחק
+          </button>
+        )}
 
         <section className="px-5 animate-fadeInUp">
           <DayCounter />

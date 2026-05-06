@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db, isLocal } from '../firebase';
 import * as local from '../lib/localStore';
+import notifyOther from '../lib/notify';
 
 // her_notes = notes written BY him (read by her)
 // him_notes = notes written BY her (read by him)
@@ -94,9 +95,6 @@ export default function useNotes(user) {
       author: user,
       pulled: false,
     };
-    // Only attach a wordle field when one is actually configured — never
-    // store an empty/null wordle, which would render an interactable-but-
-    // broken attachment on the recipient's cork board.
     if (wordle && wordle.word) base.wordle = wordle;
 
     if (isLocal) {
@@ -106,6 +104,15 @@ export default function useNotes(user) {
     await addDoc(collection(db, 'notes', outgoingColl, 'items'), {
       ...base,
       createdAt: serverTimestamp(),
+    });
+
+    // Best-effort push to the other user. Doesn't block UI; failures
+    // are silently swallowed inside notifyOther.
+    const preview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+    notifyOther(user, {
+      title: wordle?.word ? '🟩 פתק wordle חדש' : 'יש לך פתק חדש 💚',
+      body: emoji ? `${emoji} ${preview}` : preview,
+      url: '/' + (user === 'her' ? 'him' : 'her'),
     });
   }
 
