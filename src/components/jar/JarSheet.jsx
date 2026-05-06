@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import WordleAttachment from './WordleAttachment';
 
 // Bottom-anchored full-width jar.
@@ -44,20 +44,35 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     return () => window.removeEventListener('keydown', onKey);
   }, [open, readingNote]);
 
-  // Free-fall once committed
+  // Free-fall once committed. CRITICAL: stop the loop the moment the lid
+  // leaves the viewport — otherwise it ticks forever, flooding the
+  // component with 60fps re-renders that freeze the bouncing notes.
   useEffect(() => {
     if (!lidGone) return;
     let raf;
+    let alive = true;
     function tick() {
-      setLid((p) => ({
-        rot: p.rot + 6,
-        ty: p.ty + p.vy,
-        vy: p.vy + 0.7,
-      }));
-      raf = requestAnimationFrame(tick);
+      if (!alive) return;
+      setLid((p) => {
+        const ny = p.ty + p.vy;
+        const off = ny > (typeof window !== 'undefined' ? window.innerHeight : 1000);
+        if (off) {
+          alive = false; // halt the loop on the next frame
+          return p;      // stop mutating once off-screen
+        }
+        return {
+          rot: p.rot + 6,
+          ty: ny,
+          vy: p.vy + 0.7,
+        };
+      });
+      if (alive) raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
   }, [lidGone]);
 
   // ONE unified pointer handler at the section level — fixes mobile because
@@ -67,13 +82,13 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
   // gesture mode is decided at pointerdown:
   //   - !open                   → "lift" (drag up to open the jar)
   //   - open && started on lid  → "twist" (horizontal swipe rotates lid)
-  //   - open && elsewhere       → no-op (the open backdrop will dismiss)
+  //   - open && elsewhere       → "close" (drag down or tap to close)
   const gestureRef = useRef({
-    mode: null, // 'lift' | 'twist'
+    mode: null, // 'lift' | 'twist' | 'close'
     startX: 0,
     startY: 0,
     lastDx: 0,
-    accDeg: 0,  // accumulated absolute degrees during twist
+    accDeg: 0,
   });
 
   function startedOnLid(e) {
@@ -86,29 +101,30 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
   }
 
   function sectionPointerDown(e) {
-    if (lidGone) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
 
     if (!open) {
       gestureRef.current = {
         mode: 'lift',
-        startX: e.clientX,
-        startY: e.clientY,
-        lastDx: 0,
-        accDeg: 0,
+        startX: e.clientX, startY: e.clientY,
+        lastDx: 0, accDeg: 0,
       };
       setSheetDragY(0);
-    } else if (startedOnLid(e)) {
+    } else if (startedOnLid(e) && !lidGone) {
+      // Twist gesture only works while the lid is still on
       gestureRef.current = {
         mode: 'twist',
-        startX: e.clientX,
-        startY: e.clientY,
-        lastDx: 0,
-        accDeg: 0,
+        startX: e.clientX, startY: e.clientY,
+        lastDx: 0, accDeg: 0,
       };
     } else {
-      gestureRef.current.mode = null;
+      // Open + non-lid (or open + lid-already-gone) → drag down to close
+      gestureRef.current = {
+        mode: 'close',
+        startX: e.clientX, startY: e.clientY,
+        lastDx: 0, accDeg: 0,
+      };
     }
   }
 
@@ -121,11 +137,10 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
       const dx = e.clientX - g.startX;
       g.lastDx = dx;
       const newRot = dx / PIXELS_PER_DEG;
-      // Track accumulated absolute degrees so a back-and-forth gesture still
-      // "uses up" twist budget (more forgiving for mobile wiggles).
       g.accDeg = Math.max(g.accDeg, Math.abs(newRot));
       setLid((p) => ({ ...p, rot: newRot }));
     }
+    // close gesture has no live preview — just commits on release
   }
 
   function sectionPointerUp(e) {
@@ -135,6 +150,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     if (g.mode === 'lift') {
       const dy = e.clientY - g.startY;
       setSheetDragY(null);
+      // Drag up enough OR tap → open
       if (dy < -40 || Math.abs(dy) < 6) setOpen(true);
     } else if (g.mode === 'twist') {
       const totalDeg = Math.max(g.accDeg, Math.abs(g.lastDx / PIXELS_PER_DEG));
@@ -144,6 +160,10 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
       } else {
         setLid({ rot: 0, ty: 0, vy: 0 });
       }
+    } else if (g.mode === 'close') {
+      const dy = e.clientY - g.startY;
+      // Drag down enough → close
+      if (dy > 60) setOpen(false);
     }
     gestureRef.current.mode = null;
   }
@@ -157,7 +177,15 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     sheetHeight = `${liveH}px`;
   }
 
-  const notesToShow = unpulled.slice(0, 12);
+  // Memoize so the reference is stable across re-renders (otherwise
+  // FloatingNotes' state-init useEffect retriggers and snaps the notes
+  // back to their starting positions every frame).
+  const notesToShow = useMemo(() => unpulled.slice(0, 12), [
+    // Recompute only when the actual set of unpulled note ids changes,
+    // not on every parent render.
+    unpulled.map((n) => n.id).join('|'),
+    unpulled.length,
+  ]);
 
   function handleReadNote(note) {
     if (!lidGone) return;
@@ -516,10 +544,12 @@ function FloatingNotes({ notes, interactive, onTap }) {
   const noteRefs = useRef([]);
   const states = useRef([]);
 
-  // Initialize/refresh physics state when the note set changes.
+  // Initialize/refresh physics state ONLY when the note ids actually
+  // change. (notes is a fresh array reference on every parent render so
+  // depending on `notes` directly resets positions every frame.)
+  const idsKey = notes.map((n) => n.id || '').join('|');
   useEffect(() => {
     states.current = notes.map((_, i) => {
-      // Deterministic-ish per index so re-renders don't jitter.
       const seed = i + 1;
       const angle = (seed * 137) % 360 * (Math.PI / 180);
       const speed = 0.6 + ((seed * 7) % 10) * 0.08;
@@ -531,7 +561,8 @@ function FloatingNotes({ notes, interactive, onTap }) {
         rot: ((seed * 37) % 24) - 12,
       };
     });
-  }, [notes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   useEffect(() => {
     let raf;
