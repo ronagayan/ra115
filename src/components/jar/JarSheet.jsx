@@ -18,8 +18,11 @@ import WordleAttachment from './WordleAttachment';
 
 const PEEK_VH = 25;
 const FULL_HEIGHT_VH = 90;
-const TWIST_THRESHOLD_DEG = 270;
-const PIXELS_PER_DEG = 2;
+// 180° (half turn) at 1px/deg = 180 px of swipe to commit. A typical phone
+// finger swing is ~250-300 px, so a single motion is enough. The
+// accumulated-absolute tracking lets back-and-forth wiggles count too.
+const TWIST_THRESHOLD_DEG = 180;
+const PIXELS_PER_DEG = 1;
 
 export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, user }) {
   const [open, setOpen] = useState(false);
@@ -361,8 +364,10 @@ function WideJar({
       </div>
 
       {/* Lid — purely visual. ALL pointer handling lives on the parent
-          section so 3D rotateY can't break hit-testing once the cap
-          starts foreshortening. */}
+          section. The cap container stays a FIXED rectangle (no 3D
+          rotation that would shrink its width). Rotation is conveyed by
+          scrolling internal grip ridges + a sweeping highlight, so the
+          cap visually maintains its size at all times. */}
       {!lidGone && (
         <div
           className="absolute pointer-events-none"
@@ -371,9 +376,9 @@ function WideJar({
             right: '8%',
             top: 0,
             height: 60,
-            transformStyle: 'preserve-3d',
-            transformOrigin: '50% 50%',
-            transform: `translate(0, ${lid.ty}px) rotateY(${lid.rot}deg)`,
+            // Only vertical translation here — no rotation on the wrapper,
+            // so the bounding box never shrinks.
+            transform: `translate(0, ${lid.ty}px)`,
             transition:
               lid.rot === 0 && lid.ty === 0
                 ? 'transform 220ms cubic-bezier(.34,1.56,.64,1)'
@@ -381,8 +386,9 @@ function WideJar({
             cursor: interactive ? 'grab' : 'default',
           }}
         >
+          {/* Brass cap — fixed rectangle */}
           <div
-            className="absolute"
+            className="absolute overflow-hidden"
             style={{
               left: 0, right: 0, top: 0,
               height: 50,
@@ -390,23 +396,49 @@ function WideJar({
               background:
                 'linear-gradient(180deg,#f4d28a 0%,#d4a657 22%,#a87a3d 50%,#7c5526 78%,#4f3416 100%)',
               boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.45), 0 6px 12px rgba(0,0,0,0.5)',
-              backfaceVisibility: 'hidden',
             }}
           >
+            {/* Static horizontal thread lines */}
             <div className="absolute inset-x-0" style={{ top: 8, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
             <div className="absolute inset-x-0" style={{ top: 18, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 28, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 38, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
-            {/* Grip notches around the cap edge — visible from the side as
-                the lid rotates around its vertical axis */}
+
+            {/* Grip notches that SCROLL horizontally with rotation —
+                this is the visual cue that the cap is being twisted. */}
             <div
-              className="absolute inset-x-0 inset-y-0 pointer-events-none"
+              className="absolute"
               style={{
+                left: -200,
+                right: -200,
+                top: 0, bottom: 0,
                 background:
-                  'repeating-linear-gradient(90deg, rgba(0,0,0,0.0) 0 6px, rgba(0,0,0,0.20) 6px 7px)',
+                  'repeating-linear-gradient(90deg,' +
+                  'rgba(0,0,0,0.0) 0 5px,' +
+                  'rgba(0,0,0,0.30) 5px 6px,' +
+                  'rgba(255,235,180,0.18) 6px 7px,' +
+                  'rgba(0,0,0,0.0) 7px 12px)',
+                transform: `translateX(${lid.rot * 0.6}px)`,
+              }}
+            />
+            {/* Sweeping shine that follows the rotation */}
+            <div
+              className="absolute"
+              style={{
+                top: 0, bottom: 0,
+                width: 28,
+                left: `calc(50% + ${Math.sin((lid.rot * Math.PI) / 180) * 50}% - 14px)`,
+                background:
+                  'linear-gradient(90deg,' +
+                  'rgba(255,255,255,0) 0%,' +
+                  'rgba(255,255,255,0.35) 50%,' +
+                  'rgba(255,255,255,0) 100%)',
+                filter: 'blur(2px)',
+                pointerEvents: 'none',
               }}
             />
           </div>
+
           <div
             className="absolute"
             style={{
@@ -414,9 +446,9 @@ function WideJar({
               borderRadius: 2,
               background: 'linear-gradient(180deg,#7c5526 0%,#d4a657 50%,#7c5526 100%)',
               boxShadow: '0 4px 6px rgba(0,0,0,0.35)',
-              backfaceVisibility: 'hidden',
             }}
           />
+
           {interactive && twistProgress > 0 && (
             <div
               className="absolute pointer-events-none"
@@ -444,7 +476,10 @@ function WideJar({
             right: '8%',
             top: 0,
             height: 60,
-            transform: `translate(0, ${lid.ty}px) rotateY(${lid.rot}deg)`,
+            // Once thrown, a normal planar tumble is fine — the user is no
+            // longer trying to twist, so size doesn't matter and a flat
+            // rotation reads as "lid falling and spinning away".
+            transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
             zIndex: 60,
           }}
         >
