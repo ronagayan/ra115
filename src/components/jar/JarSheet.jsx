@@ -1,24 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import WordleAttachment from './WordleAttachment';
 
-// Bottom-anchored full-width jar. The JAR itself is the draggable element
-// — there is no separate drawer/handle chrome.
+// Bottom-anchored full-width jar.
 //
-// Closed: the top quarter of the screen shows the jar's TOP (lid + neck +
-// upper body). Drag UP anywhere on the jar → expands to a fully-visible
-// open state.
+// Closed (peek): bottom 25vh of viewport. Touch ANYWHERE on the jar and
+// drag up to open. The lid is purely cosmetic in this state — drag
+// handlers belong to the entire jar surface.
 //
-// LID gesture: once open, swipe horizontally on the lid to TWIST it.
-// After enough rotation (≥ ¾ turn) it pops off — gravity carries it off
-// the bottom of the screen. Once gone, the bouncing notes inside become
-// tappable.
+// Open (full): jar fully visible. Now the lid is interactive: swipe it
+// horizontally to twist (3D rotation around the vertical axis through the
+// cap, using CSS rotateX-via-perspective so it looks like an actual screw
+// motion). Past 270° of accumulated twist, the lid pops off and falls.
 //
-// One CTA below the jar: "להוסיף פתק".
+// Once the lid is gone, the bouncing notes inside (DVD-screensaver style
+// — bounce off all four walls, no React re-renders, pure DOM mutation in
+// a rAF loop) become tappable. Tapping a note opens it for reading.
 
 const PEEK_VH = 25;
 const FULL_HEIGHT_VH = 90;
-const TWIST_THRESHOLD_DEG = 270; // ¾ of a turn to commit
-const PIXELS_PER_DEG = 2;        // horizontal swipe → degrees of rotation
+const TWIST_THRESHOLD_DEG = 270;
+const PIXELS_PER_DEG = 2;
 
 export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, user }) {
   const [open, setOpen] = useState(false);
@@ -26,11 +27,11 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
   const [lid, setLid] = useState({ rot: 0, ty: 0, vy: 0 });
   const [readingNote, setReadingNote] = useState(null);
 
-  // Sheet drag → lift jar from peek to full
+  // Jar lift drag (peek → full)
   const sheetDragRef = useRef({ startY: null });
   const [sheetDragY, setSheetDragY] = useState(null);
 
-  // Lid drag (horizontal twist)
+  // Lid twist drag
   const lidDragRef = useRef({ active: false, startX: 0, lastDx: 0 });
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     return () => window.removeEventListener('keydown', onKey);
   }, [open, readingNote]);
 
-  // Lid free-fall once committed
+  // Free-fall once committed
   useEffect(() => {
     if (!lidGone) return;
     let raf;
@@ -60,7 +61,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     return () => cancelAnimationFrame(raf);
   }, [lidGone]);
 
-  // — Sheet drag handlers —
+  // — Sheet drag: works from anywhere on the jar in peek state —
   function sheetPointerDown(e) {
     if (open) return;
     e.preventDefault();
@@ -81,7 +82,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     if (dy < -40 || Math.abs(dy) < 6) setOpen(true);
   }
 
-  // — Lid twist handlers —
+  // — Lid twist: only active when open —
   function lidPointerDown(e) {
     if (!open || lidGone) return;
     e.preventDefault();
@@ -105,11 +106,9 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     lidDragRef.current.active = false;
     const totalDeg = Math.abs(lidDragRef.current.lastDx / PIXELS_PER_DEG);
     if (totalDeg >= TWIST_THRESHOLD_DEG) {
-      // Pop off: keep current rotation, give it upward then falling velocity
       setLid((p) => ({ ...p, vy: -8 }));
       setLidGone(true);
     } else {
-      // Snap back
       setLid({ rot: 0, ty: 0, vy: 0 });
     }
   }
@@ -135,14 +134,10 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
     setReadingNote(null);
   }
 
-  // Live-updated version of the note being read — wordle.guesses change
-  // when the recipient submits a guess, so we need to pull the latest
-  // copy from `unpulled` (which is a Firestore subscription).
   const liveReading = readingNote
     ? unpulled.find((n) => n.id === readingNote.id) || readingNote
     : null;
 
-  // Twist progress hint
   const twistProgress = Math.min(Math.abs(lid.rot) / TWIST_THRESHOLD_DEG, 1);
 
   return (
@@ -161,7 +156,8 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
         }}
       />
 
-      {/* The jar IS the sheet — no chrome / pill / hint text */}
+      {/* The jar IS the sheet — ALL pointer handlers are on the section
+          itself, so dragging up works from anywhere on the visible jar. */}
       <section
         className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center select-none overflow-visible"
         style={{
@@ -169,17 +165,15 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
           transition: sheetDragY !== null ? 'none' : 'height 480ms cubic-bezier(.34,1.4,.5,1)',
           willChange: 'height',
           touchAction: 'none',
+          // Perspective so 3D rotations on the lid look like actual depth
+          perspective: '900px',
         }}
+        onPointerDown={sheetPointerDown}
+        onPointerMove={sheetPointerMove}
+        onPointerUp={sheetPointerUp}
+        onPointerCancel={sheetPointerUp}
       >
-        {/* Wide-jar body — full width. Drag handlers live on the body
-            so the user lifts the jar itself. */}
-        <div
-          className="relative w-full flex-1"
-          onPointerDown={sheetPointerDown}
-          onPointerMove={sheetPointerMove}
-          onPointerUp={sheetPointerUp}
-          onPointerCancel={sheetPointerUp}
-        >
+        <div className="relative w-full flex-1">
           <WideJar
             notesToShow={notesToShow}
             lidGone={lidGone}
@@ -193,7 +187,6 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
           />
         </div>
 
-        {/* CTA + close — only when fully open */}
         {open && (
           <div className="w-full px-6 pb-5 flex flex-col items-center gap-3">
             <button
@@ -244,12 +237,7 @@ export default function JarSheet({ unpulled, onPull, onWrite, onUpdateWordle, us
             >
               {liveReading.emoji && <div className="text-4xl text-center mb-3">{liveReading.emoji}</div>}
               {liveReading.imageUrl && (
-                <img
-                  src={liveReading.imageUrl}
-                  alt=""
-                  loading="eager"
-                  className="w-full rounded-sm mb-4 max-h-72 object-cover"
-                />
+                <img src={liveReading.imageUrl} alt="" loading="eager" className="w-full rounded-sm mb-4 max-h-72 object-cover" />
               )}
               <p
                 className="text-center whitespace-pre-wrap leading-relaxed"
@@ -290,7 +278,7 @@ function WideJar({
 }) {
   return (
     <div className="relative w-full h-full">
-      {/* Glass body */}
+      {/* Glass body — pointerEvents: none so drag-to-open events bubble */}
       <div
         className="absolute"
         style={{
@@ -330,47 +318,12 @@ function WideJar({
           }}
         />
 
-        {/* Bouncing notes */}
-        {notesToShow.map((note, i) => {
-          const seed = i;
-          const left = 10 + ((seed * 23) % 75);
-          const dur = 4 + (seed % 5);
-          const delay = (seed * 0.7) % 5;
-          const tilt = ((seed * 37) % 24) - 12;
-          return (
-            <button
-              key={note.id || i}
-              onClick={() => onReadNote(note)}
-              disabled={!interactive || !lidGone}
-              className="absolute pointer-events-auto"
-              style={{
-                left: `${left}%`,
-                bottom: 8 + ((seed * 31) % 240),
-                width: 60,
-                height: 40,
-                background: 'linear-gradient(170deg,#f5ecd0 0%,#e6d5a8 100%)',
-                boxShadow: '0 3px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(80,55,20,0.25)',
-                borderRadius: 2,
-                transform: `rotate(${tilt}deg)`,
-                animation: `noteFloat${seed % 4} ${dur}s ease-in-out ${delay}s infinite`,
-                cursor: lidGone ? 'pointer' : 'default',
-                opacity: 0.95,
-              }}
-            >
-              <div className="mt-1.5 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.55)', width: '70%' }} />
-              <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.45)', width: '85%' }} />
-              <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.40)', width: '55%' }} />
-              {note.wordle && (
-                <div
-                  className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[8px] rounded-full"
-                  style={{ background: '#f4a261', color: '#3a1f08' }}
-                >
-                  🟩
-                </div>
-              )}
-            </button>
-          );
-        })}
+        {/* DVD-style bouncing notes */}
+        <FloatingNotes
+          notes={notesToShow}
+          interactive={interactive && lidGone}
+          onTap={onReadNote}
+        />
 
         {notesToShow.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -379,7 +332,8 @@ function WideJar({
         )}
       </div>
 
-      {/* Lid — rotates horizontally; once committed, lid flies away */}
+      {/* Lid — twists in 3D (rotateY around vertical axis = real screw cap
+          motion). Once committed, the lid free-falls. */}
       {!lidGone && (
         <div
           className="absolute"
@@ -388,11 +342,13 @@ function WideJar({
             right: '8%',
             top: 0,
             height: 60,
+            transformStyle: 'preserve-3d',
             transformOrigin: '50% 50%',
-            transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
-            transition: lid.rot === 0 && lid.ty === 0
-              ? 'transform 220ms cubic-bezier(.34,1.56,.64,1)'
-              : 'none',
+            transform: `translate(0, ${lid.ty}px) rotateY(${lid.rot}deg)`,
+            transition:
+              lid.rot === 0 && lid.ty === 0
+                ? 'transform 220ms cubic-bezier(.34,1.56,.64,1)'
+                : 'none',
             cursor: interactive ? 'grab' : 'default',
             touchAction: 'none',
           }}
@@ -401,7 +357,6 @@ function WideJar({
           onPointerUp={onLidPointerUp}
           onPointerCancel={onLidPointerUp}
         >
-          {/* Brass cap */}
           <div
             className="absolute"
             style={{
@@ -411,13 +366,22 @@ function WideJar({
               background:
                 'linear-gradient(180deg,#f4d28a 0%,#d4a657 22%,#a87a3d 50%,#7c5526 78%,#4f3416 100%)',
               boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.45), 0 6px 12px rgba(0,0,0,0.5)',
+              backfaceVisibility: 'hidden',
             }}
           >
-            {/* threads + grip ridges that show the rotation */}
             <div className="absolute inset-x-0" style={{ top: 8, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
             <div className="absolute inset-x-0" style={{ top: 18, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 28, height: 1.5, background: 'rgba(0,0,0,0.20)' }} />
             <div className="absolute inset-x-0" style={{ top: 38, height: 1.5, background: 'rgba(0,0,0,0.25)' }} />
+            {/* Grip notches around the cap edge — visible from the side as
+                the lid rotates around its vertical axis */}
+            <div
+              className="absolute inset-x-0 inset-y-0 pointer-events-none"
+              style={{
+                background:
+                  'repeating-linear-gradient(90deg, rgba(0,0,0,0.0) 0 6px, rgba(0,0,0,0.20) 6px 7px)',
+              }}
+            />
           </div>
           <div
             className="absolute"
@@ -426,17 +390,14 @@ function WideJar({
               borderRadius: 2,
               background: 'linear-gradient(180deg,#7c5526 0%,#d4a657 50%,#7c5526 100%)',
               boxShadow: '0 4px 6px rgba(0,0,0,0.35)',
+              backfaceVisibility: 'hidden',
             }}
           />
-          {/* Twist progress ring around the cap */}
           {interactive && twistProgress > 0 && (
             <div
               className="absolute pointer-events-none"
               style={{
-                left: -6,
-                right: -6,
-                top: -6,
-                height: 70,
+                left: -6, right: -6, top: -6, height: 70,
                 borderRadius: '12px 12px 0 0',
                 border: '2px dashed rgba(82,183,136,0.7)',
                 opacity: twistProgress,
@@ -451,7 +412,6 @@ function WideJar({
         </div>
       )}
 
-      {/* Thrown lid */}
       {lidGone && (
         <div
           className="absolute pointer-events-none"
@@ -460,7 +420,7 @@ function WideJar({
             right: '8%',
             top: 0,
             height: 60,
-            transform: `translate(0, ${lid.ty}px) rotate(${lid.rot}deg)`,
+            transform: `translate(0, ${lid.ty}px) rotateY(${lid.rot}deg)`,
             zIndex: 60,
           }}
         >
@@ -483,13 +443,108 @@ function WideJar({
           />
         </div>
       )}
+    </div>
+  );
+}
 
-      <style>{`
-        @keyframes noteFloat0 { 0%, 100% { translate: 0 0; } 50% { translate: 6px -10px; } }
-        @keyframes noteFloat1 { 0%, 100% { translate: 0 0; } 50% { translate: -8px -14px; } }
-        @keyframes noteFloat2 { 0%, 100% { translate: 0 0; } 50% { translate: 10px 8px; } }
-        @keyframes noteFloat3 { 0%, 100% { translate: 0 0; } 50% { translate: -12px 6px; } }
-      `}</style>
+// ────────────────────────────────────────────────────────────────────────────
+// DVD-screensaver bouncing notes. Each note has position + velocity;
+// each frame it advances and reflects off the four interior walls.
+// We do all updates via refs + direct DOM mutation so we don't trigger
+// React reconciliation 60×/sec.
+function FloatingNotes({ notes, interactive, onTap }) {
+  const containerRef = useRef(null);
+  const noteRefs = useRef([]);
+  const states = useRef([]);
+
+  // Initialize/refresh physics state when the note set changes.
+  useEffect(() => {
+    states.current = notes.map((_, i) => {
+      // Deterministic-ish per index so re-renders don't jitter.
+      const seed = i + 1;
+      const angle = (seed * 137) % 360 * (Math.PI / 180);
+      const speed = 0.6 + ((seed * 7) % 10) * 0.08;
+      return {
+        x: 20 + ((seed * 53) % 200),
+        y: 20 + ((seed * 71) % 260),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        rot: ((seed * 37) % 24) - 12,
+      };
+    });
+  }, [notes]);
+
+  useEffect(() => {
+    let raf;
+    function tick() {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0) {
+        const noteW = 60;
+        const noteH = 40;
+        const W = rect.width;
+        const H = rect.height;
+
+        for (let i = 0; i < states.current.length; i++) {
+          const s = states.current[i];
+          if (!s) continue;
+          s.x += s.vx;
+          s.y += s.vy;
+
+          // Bounce off walls — DVD logo style
+          if (s.x <= 0)         { s.x = 0;         s.vx = Math.abs(s.vx); }
+          if (s.x >= W - noteW) { s.x = W - noteW; s.vx = -Math.abs(s.vx); }
+          if (s.y <= 0)         { s.y = 0;         s.vy = Math.abs(s.vy); }
+          if (s.y >= H - noteH) { s.y = H - noteH; s.vy = -Math.abs(s.vy); }
+
+          const el = noteRefs.current[i];
+          if (el) {
+            el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) rotate(${s.rot}deg)`;
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="absolute inset-0 pointer-events-none">
+      {notes.map((note, i) => (
+        <button
+          key={note.id || i}
+          ref={(el) => (noteRefs.current[i] = el)}
+          onClick={() => onTap(note)}
+          disabled={!interactive}
+          className="absolute"
+          style={{
+            top: 0,
+            left: 0,
+            width: 60,
+            height: 40,
+            background: 'linear-gradient(170deg,#f5ecd0 0%,#e6d5a8 100%)',
+            boxShadow: '0 3px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(80,55,20,0.25)',
+            borderRadius: 2,
+            transform: 'translate(0, 0)',
+            willChange: 'transform',
+            cursor: interactive ? 'pointer' : 'default',
+            opacity: 0.95,
+            pointerEvents: interactive ? 'auto' : 'none',
+          }}
+        >
+          <div className="mt-1.5 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.55)', width: '70%' }} />
+          <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.45)', width: '85%' }} />
+          <div className="mt-1 mx-1.5 h-px" style={{ background: 'rgba(80,55,20,0.40)', width: '55%' }} />
+          {note.wordle && (
+            <div
+              className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[8px] rounded-full"
+              style={{ background: '#f4a261', color: '#3a1f08' }}
+            >
+              🟩
+            </div>
+          )}
+        </button>
+      ))}
     </div>
   );
 }

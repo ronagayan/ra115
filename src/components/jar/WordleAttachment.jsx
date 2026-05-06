@@ -6,8 +6,19 @@ import { useState } from 'react';
 //   updates note.wordle.guesses in Firestore live.
 //
 // Word length is determined by the author's chosen word (3-7 chars).
+// Direction is auto-detected per-word (Hebrew → RTL, anything else → LTR).
 
 const MAX_GUESSES = 6;
+// If any char is in the Hebrew block (U+0590..U+05FF), treat the word as
+// Hebrew → RTL. Otherwise default to LTR.
+function detectDir(text) {
+  if (!text) return 'ltr';
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    if (code >= 0x0590 && code <= 0x05FF) return 'rtl';
+  }
+  return 'ltr';
+}
 
 const TILE_COLOR = {
   correct: '#52b788',
@@ -52,6 +63,7 @@ export default function WordleAttachment({
   const len = word.length;
   const guesses = wordle.guesses || [];
   const done = wordle.solved || guesses.length >= MAX_GUESSES;
+  const wordDir = detectDir(word);
 
   async function submit() {
     if (isAuthor) return;
@@ -87,13 +99,13 @@ export default function WordleAttachment({
         </p>
       ) : null}
 
-      {/* Grid */}
+      {/* Grid — direction follows the word's language */}
       <div className="flex flex-col gap-1 items-center mb-3">
         {Array.from({ length: MAX_GUESSES }).map((_, row) => {
           const guess = guesses[row];
           const isCurrent = !done && row === guesses.length;
           return (
-            <div key={row} className="flex gap-1" dir="ltr">
+            <div key={row} className="flex gap-1" dir={wordDir}>
               {Array.from({ length: len }).map((_, col) => {
                 const status = guess?.result[col] || 'empty';
                 let letter = guess?.word[col] || '';
@@ -127,9 +139,9 @@ export default function WordleAttachment({
             value={input}
             onChange={(e) => setInput(e.target.value.slice(0, len))}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder={`${len} אותיות`}
+            placeholder={`${len} ${wordDir === 'rtl' ? 'אותיות' : 'letters'}`}
             maxLength={len}
-            dir="rtl"
+            dir={wordDir}
             className="flex-1 rounded-xl px-3 py-2 text-sm text-center font-mono focus:outline-none"
             style={{
               background: 'rgba(13,31,22,0.7)',
