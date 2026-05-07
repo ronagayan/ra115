@@ -17,4 +17,4 @@ export const firebaseConfig = {
 
 // Optional — for FCM push notifications.
 // Generate at Firebase Console → Project Settings → Cloud Messaging → Web push certificates
-export const VAPID_KEY = 'REPLACE_WITH_VAPID_KEY';
+export const VAPID_KEY = 'BGxsZTFELkCzDdsAIW9PZn6TEZQZMQrY9cx9t4dEo9j9Yz3jwNb_7hClkkYL2Uj8f-Zg5sRn4pSykfGQZZk8n04';
